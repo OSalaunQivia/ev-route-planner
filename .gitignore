@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Virtualenv
+.venv/
+venv/
+
+# Secrets — never commit these
+.env
+.streamlit/secrets.toml
+
+# Runtime data (re-downloaded on first request)
+data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp

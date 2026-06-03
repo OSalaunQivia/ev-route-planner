@@ -1,0 +1,9 @@
+streamlit>=1.30
+folium>=0.15
+streamlit-folium>=0.18
+streamlit-searchbox>=0.1.13
+requests>=2.31
+python-dotenv>=1.0
+flexpolyline>=0.1.0
+pandas>=2.0
+numpy>=1.24
