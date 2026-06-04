@@ -105,7 +105,25 @@ def get_secret(name: str, default: str = "") -> str:
     return os.getenv(name, default)
 
 
-st.set_page_config(page_title="EV Route Planner", layout="wide")
+st.set_page_config(
+    page_title="EV Route Planner",
+    page_icon="assets/logo-qivia.png",
+    layout="wide",
+)
+
+# PWA hints: when added to the iOS/Android home screen, opens fullscreen with
+# the dark Qivia color in the status bar and a friendly short title.
+st.markdown(
+    """
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="EV Planner">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#03060D">
+    <link rel="apple-touch-icon" href="assets/logo-qivia.png">
+    """,
+    unsafe_allow_html=True,
+)
 
 # Qivia-style dark charter: Plus Jakarta Sans + DM Serif Display, mint green accents on black.
 st.markdown(
