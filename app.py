@@ -136,6 +136,15 @@ st.markdown(
     button, input, textarea, select, p, span, div, label {
         font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
     }
+    /* Don't break Material Symbols icons used by Streamlit (sidebar toggle, etc.) */
+    [class*="material-symbols"],
+    [class*="material-icons"],
+    span.material-symbols-outlined,
+    span.material-symbols-rounded,
+    span.material-icons {
+        font-family: 'Material Symbols Outlined', 'Material Symbols Rounded',
+                     'Material Icons' !important;
+    }
     h1, h2, h3, h4 {
         font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
         font-weight: 700 !important;
@@ -192,11 +201,45 @@ st.markdown(
     }
     div[data-testid="stToolbar"] { display: none !important; }
 
-    /* Mobile-friendly grid: stop cards stack vertically on small screens. */
+    /* ---------- MOBILE LAYOUT (≤ 767px) ---------- */
     @media (max-width: 767px) {
-        div[data-testid="column"] {
-            width: 100% !important;
+        /* Sidebar takes the full screen when opened, completely hides main behind */
+        section[data-testid="stSidebar"] {
+            width: 100vw !important;
+            min-width: 100vw !important;
+            max-width: 100vw !important;
+            z-index: 999999 !important;
+        }
+        /* Main content uses the full viewport width when sidebar is closed */
+        [data-testid="stAppViewContainer"] > section.main,
+        [data-testid="stMain"] {
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+        /* Title smaller on mobile */
+        h1 { font-size: 2rem !important; }
+        /* Metrics: stack 2 per row instead of 4 */
+        [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+            min-width: 48% !important;
+            flex: 1 1 48% !important;
+        }
+        /* Stop cards: one per row (forced full width) */
+        [data-testid="stHorizontalBlock"]:has(> [data-testid="column"]:nth-child(3))
+            > [data-testid="column"] {
+            min-width: 100% !important;
             flex: 0 0 100% !important;
+        }
+        /* Tighter metric cards */
+        div[data-testid="stMetric"] {
+            padding: 0.5rem 0.7rem !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.3rem !important;
+        }
+        /* The comparison banner above tabs wraps */
+        .stMarkdown div[style*="display:flex"] {
+            flex-wrap: wrap !important;
+            gap: 0.6rem !important;
         }
     }
 
@@ -451,7 +494,8 @@ def render_trip(
             [[min(all_lats), min(all_lngs)], [max(all_lats), max(all_lngs)]],
             padding=(20, 20),
         )
-    st_folium(m, height=520, width=None, returned_objects=[], key=f"map_{key_suffix}")
+    # Map height: shorter on mobile to leave room for stops list below.
+    st_folium(m, height=400, width=None, returned_objects=[], key=f"map_{key_suffix}")
 
     # Arrêts en grille (4 par ligne).
     if plan.stops:
@@ -714,6 +758,20 @@ if go:
         unsafe_allow_html=True,
     )
 
+    # Tip for mobile users: results are below, sidebar must be closed to see them.
+    st.markdown(
+        """
+        <div class="mobile-tip" style="display:none;background:#0B111C;
+             border:1px solid #5FFFA7;border-radius:8px;padding:0.6rem 1rem;
+             margin:0.5rem 0;color:#5FFFA7;font-size:0.9rem;">
+          📱 Ferme la sidebar (flèche en haut à gauche) pour voir le résultat ↓
+        </div>
+        <style>
+          @media (max-width: 767px) { .mobile-tip { display: block !important; } }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     tab_fast, tab_eco = st.tabs(["Rapide", "Économique"])
     with tab_fast:
         meta_fast = {
