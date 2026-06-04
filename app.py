@@ -136,14 +136,44 @@ st.markdown(
     button, input, textarea, select, p, span, div, label {
         font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
     }
-    /* Don't break Material Symbols icons used by Streamlit (sidebar toggle, etc.) */
-    [class*="material-symbols"],
-    [class*="material-icons"],
-    span.material-symbols-outlined,
-    span.material-symbols-rounded,
-    span.material-icons {
-        font-family: 'Material Symbols Outlined', 'Material Symbols Rounded',
-                     'Material Icons' !important;
+    /* On mobile, Streamlit's sidebar collapse icon doesn't render properly with our
+       font overrides. Replace it with a plain "✕" via CSS pseudo-element. */
+    @media (max-width: 767px) {
+        [data-testid="stSidebarCollapseButton"],
+        button[kind="headerNoPadding"],
+        [data-testid="stSidebarCollapsedControl"] {
+            position: relative !important;
+            background-color: #5FFFA7 !important;
+            border-radius: 8px !important;
+            width: 40px !important;
+            height: 40px !important;
+            margin: 0.5rem !important;
+        }
+        [data-testid="stSidebarCollapseButton"] *,
+        button[kind="headerNoPadding"] *,
+        [data-testid="stSidebarCollapsedControl"] * {
+            color: transparent !important;
+            font-size: 0 !important;
+            fill: transparent !important;
+        }
+        [data-testid="stSidebarCollapseButton"]::after,
+        button[kind="headerNoPadding"]::after,
+        [data-testid="stSidebarCollapsedControl"]::after {
+            content: "✕";
+            color: #03060D !important;
+            font-size: 1.3rem !important;
+            font-family: -apple-system, system-ui, sans-serif !important;
+            font-weight: 700;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        /* When the sidebar is collapsed, the "open" button needs a different icon */
+        [data-testid="stSidebarCollapsedControl"]::after {
+            content: "☰";
+            font-size: 1.5rem !important;
+        }
     }
     h1, h2, h3, h4 {
         font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
@@ -758,13 +788,31 @@ if go:
         unsafe_allow_html=True,
     )
 
-    # Tip for mobile users: results are below, sidebar must be closed to see them.
+    # On mobile, auto-collapse the sidebar so results are visible. Streamlit has no
+     # native API for this; we click the toggle via JS after a short delay.
     st.markdown(
         """
+        <script>
+        (function() {
+            if (window.innerWidth >= 768) return;
+            const tryClose = () => {
+                const doc = window.parent ? window.parent.document : document;
+                const btn = doc.querySelector('[data-testid="stSidebarCollapseButton"]')
+                          || doc.querySelector('button[kind="headerNoPadding"]');
+                if (btn) { btn.click(); return true; }
+                return false;
+            };
+            // Retry a few times — Streamlit may re-render and lose the listener.
+            let attempts = 0;
+            const id = setInterval(() => {
+                if (tryClose() || ++attempts > 10) clearInterval(id);
+            }, 150);
+        })();
+        </script>
         <div class="mobile-tip" style="display:none;background:#0B111C;
              border:1px solid #5FFFA7;border-radius:8px;padding:0.6rem 1rem;
              margin:0.5rem 0;color:#5FFFA7;font-size:0.9rem;">
-          📱 Ferme la sidebar (flèche en haut à gauche) pour voir le résultat ↓
+          📱 Si tu vois encore la sidebar, touche le ✕ vert en haut à gauche
         </div>
         <style>
           @media (max-width: 767px) { .mobile-tip { display: block !important; } }
