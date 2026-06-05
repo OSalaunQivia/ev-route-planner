@@ -84,6 +84,8 @@ def photon_search(query: str) -> list[tuple[str, str]]:
         props = f.get("properties", {})
         lng, lat = f["geometry"]["coordinates"]
         name = (props.get("name") or "").strip()
+        street = (props.get("street") or "").strip()
+        housenumber = (props.get("housenumber") or "").strip()
         city = (props.get("city") or "").strip()
         postcode = (props.get("postcode") or "").strip()
         country = (props.get("country") or "").strip()
@@ -93,16 +95,25 @@ def photon_search(query: str) -> list[tuple[str, str]]:
         if ";" in postcode:
             postcode = ""
 
+        # Build the primary label part. For houses, prefer "52 Rue Laugier"
+        # over the OSM `name` field (which may be empty or generic).
+        if housenumber and street:
+            primary = f"{housenumber} {street}"
+        elif street and not name:
+            primary = street
+        else:
+            primary = name or street
+
         parts: list[str] = []
-        if name:
-            parts.append(name)
+        if primary:
+            parts.append(primary)
         # Only add postcode/city detail for street-level or specific places,
         # not for whole cities/regions.
         if osm_value not in LOCALITY_TYPES:
             loc_bits = []
             if postcode:
                 loc_bits.append(postcode)
-            if city and city != name:
+            if city and city != primary:
                 loc_bits.append(city)
             if loc_bits:
                 parts.append(" ".join(loc_bits))
