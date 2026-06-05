@@ -135,17 +135,12 @@ st.markdown(
         background-color: #03060D !important;
         color: #FFFFFF;
     }
-    html, body, .stApp, p, label, button, input, textarea, select, div, span {
+    /* Plus Jakarta Sans only on textual elements — NOT on span/div which
+       Streamlit also uses for icon containers. */
+    html, body, .stApp, .stMarkdown, .stCaption,
+    p, label, button, input, textarea, select,
+    h1, h2, h3, h4, h5, h6 {
         font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
-    }
-    /* Preserve Streamlit's Material Symbols icons (expander chevron, etc.) */
-    [class*="material-symbols"],
-    [class*="material-icons"],
-    span.material-symbols-outlined,
-    span.material-symbols-rounded,
-    span.material-icons {
-        font-family: 'Material Symbols Outlined', 'Material Symbols Rounded',
-                     'Material Icons' !important;
     }
     h1, h2, h3, h4 {
         font-weight: 700 !important;
@@ -165,7 +160,7 @@ st.markdown(
         width: 64px;
         background: #5FFFA7;
         border-radius: 4px;
-        margin: -0.4rem 0 1.4rem 0;
+        margin: 0.4rem 0 1rem 0;
     }
 
     /* Hide Streamlit chrome — no sidebar to toggle, so we don't need the header */
@@ -339,7 +334,7 @@ SEARCHBOX_STYLE = {
     },
 }
 
-with st.expander("🗺️  Mon trajet", expanded=True):
+with st.expander("Mon trajet", expanded=True):
     origin = st_searchbox(
         photon_search,
         key="origin",
@@ -353,7 +348,7 @@ with st.expander("🗺️  Mon trajet", expanded=True):
         style_overrides=SEARCHBOX_STYLE,
     )
 
-with st.expander("🔋  Batterie & véhicule"):
+with st.expander("Batterie & véhicule"):
     soc = st.slider("Charge batterie initiale (%)", 0, 100, 80)
     st.caption(f"{TESLA_M3_LR['name']} — {TESLA_M3_LR['battery_kwh']:.0f} kWh")
     driving_style = st.radio(
@@ -364,7 +359,7 @@ with st.expander("🔋  Batterie & véhicule"):
         help="Souple ~110 km/h • Normal limites légales • Dynamique ~140 km/h",
     )
 
-with st.expander("⚙️  Affinage"):
+with st.expander("Affinage"):
     cw1, cw2 = st.columns(2)
     use_weather = cw1.checkbox("Météo", value=True)
     use_elevation = cw2.checkbox("Dénivelé", value=True)
