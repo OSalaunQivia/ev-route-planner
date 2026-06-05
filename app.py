@@ -352,6 +352,19 @@ def _check_password() -> None:
         """,
         unsafe_allow_html=True,
     )
+    # Hide the "Press Enter to apply" hint Streamlit shows on text inputs.
+    st.markdown(
+        """
+        <style>
+        [data-testid="InputInstructions"],
+        [data-testid="stTextInput"] [class*="InputInstructions"],
+        div[data-testid="stTextInput"] div[class*="instructions"] {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     pwd = st.text_input(
         "🔒 Code d'accès",
         type="password",
