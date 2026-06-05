@@ -356,7 +356,6 @@ def _check_password() -> None:
         "🔒 Code d'accès",
         type="password",
         key="access_pwd",
-        placeholder="Tape ton code et appuie sur Entrée",
     )
     if pwd:
         if hashlib.sha256(pwd.encode()).hexdigest() == expected:
