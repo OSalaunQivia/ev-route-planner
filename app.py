@@ -383,11 +383,18 @@ def _check_password() -> None:
 
 
 _check_password()
-_render_header()
 
 
 # ============================================================================
-# Inputs section (replaces sidebar): three expanders + Calculer button
+# Wizard state — 3 steps: input → loading → result
+# ============================================================================
+
+if "step" not in st.session_state:
+    st.session_state.step = "input"
+
+
+# ============================================================================
+# Constants used in both views
 # ============================================================================
 
 SEARCHBOX_STYLE = {
@@ -409,83 +416,86 @@ SEARCHBOX_STYLE = {
 }
 
 # === User context (hardcoded "connected vehicle" info) ===
-VEHICLE_NAME = TESLA_M3_LR["name"]  # "Tesla Model 3 LR"
+VEHICLE_NAME = TESLA_M3_LR["name"]
 VEHICLE_CURRENT_SOC = 67
 VEHICLE_DEFAULT_STYLE = "Dynamique"
 VEHICLE_LOCATION_LABEL = "52 Rue Laugier, 75017 Paris"
-VEHICLE_LOCATION_COORDS = "48.886300,2.295000"  # lat,lng
+VEHICLE_LOCATION_COORDS = "48.886300,2.295000"
 
-with st.expander("Mon trajet", expanded=True):
-    use_vehicle_location = st.toggle(
-        "Partir de l'emplacement actuel du véhicule",
-        value=True,
-        help=f"📍 {VEHICLE_LOCATION_LABEL}",
-    )
-    if use_vehicle_location:
-        st.caption(f"📍 Départ : {VEHICLE_LOCATION_LABEL}")
-        origin = VEHICLE_LOCATION_COORDS
-    else:
-        origin = st_searchbox(
+
+def render_input_view() -> None:
+    """STEP 1 — Inputs page. Captures user choices, then transitions to loading."""
+    _render_header()
+
+    with st.expander("Mon trajet", expanded=True):
+        use_vehicle_location = st.toggle(
+            "Partir de l'emplacement actuel du véhicule",
+            value=True,
+            help=f"📍 {VEHICLE_LOCATION_LABEL}",
+        )
+        if use_vehicle_location:
+            st.caption(f"📍 Départ : {VEHICLE_LOCATION_LABEL}")
+            origin = VEHICLE_LOCATION_COORDS
+        else:
+            origin = st_searchbox(
+                photon_search,
+                key="origin",
+                placeholder="Départ — ville, adresse, code postal",
+                style_overrides=SEARCHBOX_STYLE,
+            )
+        destination = st_searchbox(
             photon_search,
-            key="origin",
-            placeholder="Départ — ville, adresse, code postal",
+            key="destination",
+            placeholder="Arrivée — ville, adresse, code postal",
             style_overrides=SEARCHBOX_STYLE,
         )
-    destination = st_searchbox(
-        photon_search,
-        key="destination",
-        placeholder="Arrivée — ville, adresse, code postal",
-        style_overrides=SEARCHBOX_STYLE,
+
+    st.markdown(
+        f"""
+        <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
+                    padding:1rem 1.1rem;margin:0.8rem 0;color:#FFFFFF;line-height:1.65;
+                    font-size:0.95rem;">
+          Votre véhicule est une <b style="color:#5FFFA7;">{VEHICLE_NAME}</b>.<br>
+          Vous bénéficiez de l'option <b style="color:#5FFFA7;">véhicule connecté</b>.<br>
+          Il est actuellement chargé à <b style="color:#5FFFA7;">{VEHICLE_CURRENT_SOC} %</b>.
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+    custom_soc = st.toggle("Simuler avec une autre charge ?", value=False)
+    soc = st.slider("Charge pour la simulation (%)", 0, 100, VEHICLE_CURRENT_SOC) if custom_soc else VEHICLE_CURRENT_SOC
 
-# === Vehicle status block (replaces "Batterie & véhicule" expander) ===
-st.markdown(
-    f"""
-    <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
-                padding:1rem 1.1rem;margin:0.8rem 0;color:#FFFFFF;line-height:1.65;
-                font-size:0.95rem;">
-      Votre véhicule est une <b style="color:#5FFFA7;">{VEHICLE_NAME}</b>.<br>
-      Vous bénéficiez de l'option <b style="color:#5FFFA7;">véhicule connecté</b>.<br>
-      Il est actuellement chargé à <b style="color:#5FFFA7;">{VEHICLE_CURRENT_SOC} %</b>.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-custom_soc = st.toggle("Simuler avec une autre charge ?", value=False)
-if custom_soc:
-    soc = st.slider("Charge pour la simulation (%)", 0, 100, VEHICLE_CURRENT_SOC)
-else:
-    soc = VEHICLE_CURRENT_SOC
-
-st.markdown(
-    f"""
-    <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
-                padding:1rem 1.1rem;margin:0.8rem 0;color:#FFFFFF;line-height:1.65;
-                font-size:0.95rem;">
-      Votre type de conduite est <b style="color:#5FFFA7;">{VEHICLE_DEFAULT_STYLE}</b>.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-custom_style = st.toggle("Paramétrer un autre style pour ce trajet ?", value=False)
-if custom_style:
-    style_options = list(DRIVING_STYLES.keys())
-    default_idx = style_options.index(VEHICLE_DEFAULT_STYLE) if VEHICLE_DEFAULT_STYLE in style_options else 1
-    driving_style = st.radio(
-        "Conduite",
-        style_options,
-        index=default_idx,
-        horizontal=True,
+    st.markdown(
+        f"""
+        <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
+                    padding:1rem 1.1rem;margin:0.8rem 0;color:#FFFFFF;line-height:1.65;
+                    font-size:0.95rem;">
+          Votre type de conduite est <b style="color:#5FFFA7;">{VEHICLE_DEFAULT_STYLE}</b>.
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-else:
-    driving_style = VEHICLE_DEFAULT_STYLE
+    custom_style = st.toggle("Paramétrer un autre style pour ce trajet ?", value=False)
+    if custom_style:
+        style_options = list(DRIVING_STYLES.keys())
+        default_idx = style_options.index(VEHICLE_DEFAULT_STYLE) if VEHICLE_DEFAULT_STYLE in style_options else 1
+        driving_style = st.radio(
+            "Conduite", style_options, index=default_idx, horizontal=True,
+        )
+    else:
+        driving_style = VEHICLE_DEFAULT_STYLE
 
-# Affinage (météo + dénivelé) toujours actifs en arrière-plan.
-use_weather = True
-use_elevation = True
-
-st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
-go = st.button("Calculer mon trajet", type="primary")
+    st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
+    if st.button("Calculer mon trajet", type="primary"):
+        st.session_state.inputs = {
+            "origin": origin,
+            "destination": destination,
+            "soc": soc,
+            "driving_style": driving_style,
+        }
+        st.session_state.pop("result_data", None)
+        st.session_state.step = "loading"
+        st.rerun()
 
 
 # ============================================================================
@@ -636,31 +646,31 @@ def render_trip(
 
 
 # ============================================================================
-# Main flow
+# Pipeline: heavy computation. Returns a dict cached in session_state.
 # ============================================================================
 
-if go:
+def compute_pipeline(inputs: dict) -> dict:
+    """Run HERE + enrichment + planner + availability + cost for a set of inputs.
+    Returns everything needed by render_result_view()."""
     here_key = get_secret("HERE_API_KEY")
     if not here_key:
-        st.error("Aucune clé HERE_API_KEY trouvée.")
-        st.stop()
-    origin_coords = _parse_coords(origin)
-    destination_coords = _parse_coords(destination)
-    if not origin_coords or not destination_coords:
-        st.error("Sélectionne un départ et une arrivée.")
-        st.stop()
-    origin = origin_coords
-    destination = destination_coords
+        raise RuntimeError("Aucune clé HERE_API_KEY trouvée.")
 
+    origin_coords = _parse_coords(inputs["origin"])
+    destination_coords = _parse_coords(inputs["destination"])
+    if not origin_coords or not destination_coords:
+        raise ValueError("Départ ou arrivée manquant.")
+
+    soc = inputs["soc"]
+    driving_style = inputs["driving_style"]
     model = apply_driving_style(TESLA_M3_LR, driving_style)
     df_all = get_irve_cached()
     corridor_km = 5.0
 
-    def pipeline(avoid_tolls: bool) -> tuple:
-        result = fetch_route_here(origin, destination, soc, model, here_key, avoid_tolls=avoid_tolls)
+    def pipeline(avoid_tolls: bool):
+        result = fetch_route_here(origin_coords, destination_coords, soc, model, here_key, avoid_tolls=avoid_tolls)
         m: dict = {}
-        if use_weather or use_elevation:
-            result, m = enrich_route(result, model, use_weather=use_weather, use_elevation=use_elevation)
+        result, m = enrich_route(result, model, use_weather=True, use_elevation=True)
         df_corridor = filter_corridor(df_all, result.points, corridor_km=corridor_km)
         df = filter_stations(df_corridor, categories=["Rapide", "HPC", "Ultra-rapide"])
         if not df.empty:
@@ -675,14 +685,8 @@ if go:
         m["stations"] = df
         return result, m, df
 
-    try:
-        with st.spinner("Itinéraire avec péage…"):
-            result_toll, meta_toll, df_toll = pipeline(avoid_tolls=False)
-        with st.spinner("Itinéraire sans péage…"):
-            result_notoll, meta_notoll, df_notoll = pipeline(avoid_tolls=True)
-    except Exception as e:
-        st.error(f"Routing : {e}")
-        st.stop()
+    result_toll, meta_toll, df_toll = pipeline(avoid_tolls=False)
+    result_notoll, meta_notoll, df_notoll = pipeline(avoid_tolls=True)
 
     plan_fast = plan_trip(result_toll, df_toll, model, initial_soc_pct=soc, mode="fast")
     budget_s = plan_fast.total_time_s * 1.20
@@ -717,10 +721,9 @@ if go:
             total += cost["total_eur"]
         return extras, total
 
-    with st.spinner("Dispo + coûts…"):
-        extras_fast, recharge_fast = enrich_stops(plan_fast, df_toll)
-        extras_eco_a, recharge_eco_a = enrich_stops(plan_eco_a, df_toll)
-        extras_eco_b, recharge_eco_b = enrich_stops(plan_eco_b, df_notoll)
+    extras_fast, recharge_fast = enrich_stops(plan_fast, df_toll)
+    extras_eco_a, recharge_eco_a = enrich_stops(plan_eco_a, df_toll)
+    extras_eco_b, recharge_eco_b = enrich_stops(plan_eco_b, df_notoll)
 
     total_fast = recharge_fast + result_toll.total_toll_eur
     total_eco_a = recharge_eco_a + result_toll.total_toll_eur
@@ -742,16 +745,81 @@ if go:
         eco_uses_notoll = False
     total_eco = recharge_eco + result_eco.total_toll_eur
 
-    # Comparison banner (wraps gracefully on narrow screens).
-    notoll_tag = "<span style='color:#5FFFA7;'>· sans péage</span>" if eco_uses_notoll else ""
+    return {
+        "origin": origin_coords,
+        "destination": destination_coords,
+        "result_toll": result_toll,
+        "result_eco": result_eco,
+        "plan_fast": plan_fast,
+        "plan_eco": plan_eco,
+        "meta_toll": meta_toll,
+        "meta_eco_base": meta_eco_base,
+        "extras_fast": extras_fast,
+        "extras_eco": extras_eco,
+        "recharge_fast": recharge_fast,
+        "recharge_eco": recharge_eco,
+        "total_fast": total_fast,
+        "total_eco": total_eco,
+        "eco_uses_notoll": eco_uses_notoll,
+    }
+
+
+# ============================================================================
+# Loading view (STEP 2)
+# ============================================================================
+
+def render_loading_view() -> None:
+    st.markdown("<div style='height: 4rem'></div>", unsafe_allow_html=True)
+    col_l, col_c, col_r = st.columns([1, 2, 1])
+    with col_c:
+        st.image("assets/logo-qivia.png", width=180)
+    st.markdown(
+        "<h2 style='text-align:center;color:#5FFFA7;margin-top:2rem;'>Calcul en cours…</h2>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "<p style='text-align:center;color:#9AA3B2;'>"
+        "Itinéraire, météo, dénivelé, bornes, prix"
+        "</p>",
+        unsafe_allow_html=True,
+    )
+    try:
+        with st.spinner(""):
+            st.session_state.result_data = compute_pipeline(st.session_state.inputs)
+        st.session_state.step = "result"
+    except Exception as e:
+        st.session_state.error = str(e)
+        st.session_state.step = "error"
+    st.rerun()
+
+
+# ============================================================================
+# Result view (STEP 3)
+# ============================================================================
+
+def render_result_view() -> None:
+    col_back, col_title = st.columns([2, 5])
+    with col_back:
+        if st.button("← Nouveau trajet", key="back_btn"):
+            st.session_state.step = "input"
+            st.session_state.pop("result_data", None)
+            st.rerun()
+    with col_title:
+        st.markdown(
+            '<h2 style="margin-top:0.4rem;font-size:1.2rem;color:#FFFFFF;">Votre trajet</h2>',
+            unsafe_allow_html=True,
+        )
+
+    data = st.session_state.result_data
+    notoll_tag = "<span style='color:#5FFFA7;'>· sans péage</span>" if data["eco_uses_notoll"] else ""
     st.markdown(
         f"""
         <div style="display:flex;gap:1rem;margin:1rem 0 0.6rem 0;
                     color:#9AA3B2;font-size:0.9rem;flex-wrap:wrap;">
           <span><b style="color:#5FFFA7;">Rapide</b>
-            &nbsp;{fmt_duration(plan_fast.total_time_s)} · {total_fast:.0f} € · {len(plan_fast.stops)} arr.</span>
+            &nbsp;{fmt_duration(data['plan_fast'].total_time_s)} · {data['total_fast']:.0f} € · {len(data['plan_fast'].stops)} arr.</span>
           <span><b style="color:#5FFFA7;">Éco</b>
-            &nbsp;{fmt_duration(plan_eco.total_time_s)} · {total_eco:.0f} € · {len(plan_eco.stops)} arr.
+            &nbsp;{fmt_duration(data['plan_eco'].total_time_s)} · {data['total_eco']:.0f} € · {len(data['plan_eco'].stops)} arr.
             {notoll_tag}</span>
         </div>
         """,
@@ -761,20 +829,48 @@ if go:
     tab_fast, tab_eco = st.tabs(["Rapide", "Économique"])
     with tab_fast:
         meta_fast = {
-            **meta_toll,
-            "stops_extras": extras_fast,
-            "recharge_cost_eur": recharge_fast,
-            "toll_eur": result_toll.total_toll_eur,
-            "total_cost_eur": total_fast,
+            **data["meta_toll"],
+            "stops_extras": data["extras_fast"],
+            "recharge_cost_eur": data["recharge_fast"],
+            "toll_eur": data["result_toll"].total_toll_eur,
+            "total_cost_eur": data["total_fast"],
         }
-        render_trip(result_toll, plan_fast, origin, destination, meta_fast, "fast")
+        render_trip(data["result_toll"], data["plan_fast"], data["origin"], data["destination"], meta_fast, "fast")
     with tab_eco:
         meta_eco = {
-            **meta_eco_base,
-            "stops_extras": extras_eco,
-            "recharge_cost_eur": recharge_eco,
-            "toll_eur": result_eco.total_toll_eur,
-            "total_cost_eur": total_eco,
-            "uses_notoll": eco_uses_notoll,
+            **data["meta_eco_base"],
+            "stops_extras": data["extras_eco"],
+            "recharge_cost_eur": data["recharge_eco"],
+            "toll_eur": data["result_eco"].total_toll_eur,
+            "total_cost_eur": data["total_eco"],
+            "uses_notoll": data["eco_uses_notoll"],
         }
-        render_trip(result_eco, plan_eco, origin, destination, meta_eco, "eco")
+        render_trip(data["result_eco"], data["plan_eco"], data["origin"], data["destination"], meta_eco, "eco")
+
+
+# ============================================================================
+# Error view
+# ============================================================================
+
+def render_error_view() -> None:
+    _render_header()
+    st.error(f"Erreur lors du calcul : {st.session_state.get('error', 'inconnue')}")
+    if st.button("← Retour au formulaire"):
+        st.session_state.step = "input"
+        st.session_state.pop("error", None)
+        st.rerun()
+
+
+# ============================================================================
+# Wizard dispatcher
+# ============================================================================
+
+step = st.session_state.get("step", "input")
+if step == "input":
+    render_input_view()
+elif step == "loading":
+    render_loading_view()
+elif step == "result":
+    render_result_view()
+elif step == "error":
+    render_error_view()
