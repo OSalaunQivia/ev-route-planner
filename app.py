@@ -327,7 +327,10 @@ def _render_header() -> None:
         st.image("assets/logo-qivia.png", width=70)
     with col_title:
         st.markdown(
-            '<h1 style="margin-top:0.4rem;">EV <span class="qivia-highlight">Route Planner</span></h1>',
+            '<h1 style="margin-top:0.4rem;font-size:1.6rem;">'
+            'Bonjour <span class="qivia-highlight">Arthur</span>,<br>'
+            'où souhaitez-vous aller aujourd\'hui ?'
+            '</h1>',
             unsafe_allow_html=True,
         )
     st.markdown('<div class="qivia-accent"></div>', unsafe_allow_html=True)
@@ -381,7 +384,6 @@ def _check_password() -> None:
 
 _check_password()
 _render_header()
-st.caption("Itinéraire et arrêts recharge optimisés")
 
 
 # ============================================================================
@@ -406,13 +408,29 @@ SEARCHBOX_STYLE = {
     },
 }
 
+# === User context (hardcoded "connected vehicle" info) ===
+VEHICLE_NAME = TESLA_M3_LR["name"]  # "Tesla Model 3 LR"
+VEHICLE_CURRENT_SOC = 67
+VEHICLE_DEFAULT_STYLE = "Dynamique"
+VEHICLE_LOCATION_LABEL = "52 Rue Laugier, 75017 Paris"
+VEHICLE_LOCATION_COORDS = "48.886300,2.295000"  # lat,lng
+
 with st.expander("Mon trajet", expanded=True):
-    origin = st_searchbox(
-        photon_search,
-        key="origin",
-        placeholder="Départ — ville, adresse, code postal",
-        style_overrides=SEARCHBOX_STYLE,
+    use_vehicle_location = st.toggle(
+        "Partir de l'emplacement actuel du véhicule",
+        value=True,
+        help=f"📍 {VEHICLE_LOCATION_LABEL}",
     )
+    if use_vehicle_location:
+        st.caption(f"📍 Départ : {VEHICLE_LOCATION_LABEL}")
+        origin = VEHICLE_LOCATION_COORDS
+    else:
+        origin = st_searchbox(
+            photon_search,
+            key="origin",
+            placeholder="Départ — ville, adresse, code postal",
+            style_overrides=SEARCHBOX_STYLE,
+        )
     destination = st_searchbox(
         photon_search,
         key="destination",
@@ -420,21 +438,51 @@ with st.expander("Mon trajet", expanded=True):
         style_overrides=SEARCHBOX_STYLE,
     )
 
-with st.expander("Batterie & véhicule"):
-    soc = st.slider("Charge batterie initiale (%)", 0, 100, 80)
-    st.caption(f"{TESLA_M3_LR['name']} — {TESLA_M3_LR['battery_kwh']:.0f} kWh")
+# === Vehicle status block (replaces "Batterie & véhicule" expander) ===
+st.markdown(
+    f"""
+    <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
+                padding:1rem 1.1rem;margin:0.8rem 0;color:#FFFFFF;line-height:1.65;
+                font-size:0.95rem;">
+      Votre véhicule est une <b style="color:#5FFFA7;">{VEHICLE_NAME}</b>.<br>
+      Vous bénéficiez de l'option <b style="color:#5FFFA7;">véhicule connecté</b>.<br>
+      Il est actuellement chargé à <b style="color:#5FFFA7;">{VEHICLE_CURRENT_SOC} %</b>.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+custom_soc = st.toggle("Simuler avec une autre charge ?", value=False)
+if custom_soc:
+    soc = st.slider("Charge pour la simulation (%)", 0, 100, VEHICLE_CURRENT_SOC)
+else:
+    soc = VEHICLE_CURRENT_SOC
+
+st.markdown(
+    f"""
+    <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
+                padding:1rem 1.1rem;margin:0.8rem 0;color:#FFFFFF;line-height:1.65;
+                font-size:0.95rem;">
+      Votre type de conduite est <b style="color:#5FFFA7;">{VEHICLE_DEFAULT_STYLE}</b>.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+custom_style = st.toggle("Paramétrer un autre style pour ce trajet ?", value=False)
+if custom_style:
+    style_options = list(DRIVING_STYLES.keys())
+    default_idx = style_options.index(VEHICLE_DEFAULT_STYLE) if VEHICLE_DEFAULT_STYLE in style_options else 1
     driving_style = st.radio(
         "Conduite",
-        list(DRIVING_STYLES.keys()),
-        index=1,
+        style_options,
+        index=default_idx,
         horizontal=True,
-        help="Souple ~110 km/h • Normal limites légales • Dynamique ~140 km/h",
     )
+else:
+    driving_style = VEHICLE_DEFAULT_STYLE
 
-with st.expander("Affinage"):
-    cw1, cw2 = st.columns(2)
-    use_weather = cw1.checkbox("Météo", value=True)
-    use_elevation = cw2.checkbox("Dénivelé", value=True)
+# Affinage (météo + dénivelé) toujours actifs en arrière-plan.
+use_weather = True
+use_elevation = True
 
 st.markdown("<div style='height:0.4rem'></div>", unsafe_allow_html=True)
 go = st.button("Calculer mon trajet", type="primary")
