@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-    <title>Qivia EV Planner</title>
+    <title>Qivia EV</title>
 
     <!-- iOS home screen / PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,8 +16,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#03060D">
     <link rel="manifest" href="manifest.json">
-    <link rel="icon" type="image/png" sizes="192x192" href="apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="512x512" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="apple-touch-icon.png">
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -26,20 +25,54 @@
             width: 100%;
             background: #03060D;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             -webkit-tap-highlight-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, 'Plus Jakarta Sans', sans-serif;
+            color: #FFFFFF;
         }
-        iframe {
-            border: none;
-            width: 100%;
-            height: 100%;
-            display: block;
+        .splash {
+            text-align: center;
+        }
+        .splash img {
+            width: 200px;
+            height: auto;
+            margin-bottom: 2rem;
+        }
+        .spinner {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto;
+            border: 4px solid rgba(95, 255, 167, 0.15);
+            border-top-color: #5FFFA7;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .splash p {
+            margin-top: 1.5rem;
+            color: #9AA3B2;
+            font-size: 0.9rem;
         }
     </style>
 </head>
 <body>
-    <iframe
-        src="https://ev-route-planner-arthur.streamlit.app/?embed=true&embed_options=show_padding,hide_loading_screen"
-        allow="geolocation; clipboard-write; fullscreen"
-        allowfullscreen></iframe>
+    <div class="splash">
+        <img src="apple-touch-icon.png" alt="Qivia">
+        <div class="spinner"></div>
+        <p>Chargement…</p>
+    </div>
+    <script>
+        // Splash for ~1s, then redirect to the Streamlit app.
+        // window.location.replace = no entry in history (back button works fine).
+        setTimeout(function () {
+            window.location.replace("https://ev-route-planner-arthur.streamlit.app/");
+        }, 1000);
+    </script>
+    <noscript>
+        <meta http-equiv="refresh" content="0; url=https://ev-route-planner-arthur.streamlit.app/">
+    </noscript>
 </body>
 </html>
