@@ -185,6 +185,11 @@ st.markdown(
         background-color: #03060D !important;
         color: #FFFFFF;
     }
+    /* Push content below Safari's top URL bar on iOS (and equivalent on Chrome Android). */
+    [data-testid="stMain"] > div:first-child,
+    .main .block-container {
+        padding-top: max(2.5rem, env(safe-area-inset-top, 0px)) !important;
+    }
     /* Plus Jakarta Sans only on textual elements — NOT on span/div which
        Streamlit also uses for icon containers. */
     html, body, .stApp, .stMarkdown, .stCaption,
