@@ -827,8 +827,14 @@ def _compute_route_base(
     result = fetch_route_here(
         origin_coords, destination_coords, soc, model, here_key, avoid_tolls=avoid_tolls,
     )
-    result, meta = enrich_route(result, model, use_weather=True, use_elevation=True)
-    df_corridor = filter_corridor(df_all, result.points, corridor_km=5.0)
+    # Enrichment (weather+elevation) and station filtering are independent — run
+    # in parallel since they both consume the route points.
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_enrich = ex.submit(enrich_route, result, model, True, True)
+        f_filter = ex.submit(filter_corridor, df_all, result.points, 5.0)
+        result, meta = f_enrich.result()
+        df_corridor = f_filter.result()
+
     df = filter_stations(df_corridor, categories=["Rapide", "HPC", "Ultra-rapide"])
     if not df.empty:
         df = df.copy()
@@ -1107,19 +1113,14 @@ def render_result_view() -> None:
         if executor:
             executor.shutdown(wait=False)
 
-    # Compact title row: back button + personalized title.
-    col_back, col_title = st.columns([3, 6])
-    with col_back:
-        if st.button("← Nouveau trajet", key="back_btn_top", use_container_width=True):
-            _back_to_input()
-            st.rerun()
-    with col_title:
-        st.markdown(
-            '<h2 style="margin:0.4rem 0 0 0;font-size:1.25rem;color:#FFFFFF;line-height:1.2;">'
-            'Voilà votre trajet <span class="qivia-highlight">Arthur</span>'
-            '</h2>',
-            unsafe_allow_html=True,
-        )
+    # Title only (back button moved to the bottom under the map, where it's
+    # not hidden behind Safari's URL bar on iOS).
+    st.markdown(
+        '<h2 style="margin:0.4rem 0 0 0;font-size:1.4rem;color:#FFFFFF;line-height:1.2;">'
+        'Voilà votre trajet <span class="qivia-highlight">Arthur</span>'
+        '</h2>',
+        unsafe_allow_html=True,
+    )
 
     # Two toggles in one row — pick the strategy + the toll option.
     t1, t2 = st.columns(2)
