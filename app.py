@@ -796,12 +796,19 @@ def render_loading_view() -> None:
     st.markdown(
         f"""
         <style>
+        /* Fullscreen overlay — covers anything from the previous step
+           that might still be in the DOM during transition. */
         .qivia-loading {{
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #03060D;
+            z-index: 2147483647;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            min-height: 70vh;
             text-align: center;
             padding: 1rem;
         }}
@@ -814,11 +821,14 @@ def render_loading_view() -> None:
             color: #5FFFA7 !important;
             margin: 0 0 0.5rem 0;
             font-size: 1.8rem;
+            font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+            font-weight: 700;
         }}
         .qivia-loading p {{
             color: #9AA3B2;
             font-size: 0.95rem;
             margin: 0 0 2rem 0;
+            font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
         }}
         .qivia-spinner {{
             width: 90px;
