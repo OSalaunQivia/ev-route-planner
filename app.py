@@ -806,9 +806,95 @@ def render_trip(  # kept for backward compat — wraps render_trip_body
 # Pipeline: heavy computation. Returns a dict cached in session_state.
 # ============================================================================
 
+def _compute_route_base(
+    origin_coords, destination_coords, soc, model, df_all, avoid_tolls,
+) -> dict:
+    """Phase 1 (slow): HERE call + enrichment + station filtering. Shared
+    across the two plan modes (fast / eco) of the same toll variant."""
+    here_key = get_secret("HERE_API_KEY")
+    result = fetch_route_here(
+        origin_coords, destination_coords, soc, model, here_key, avoid_tolls=avoid_tolls,
+    )
+    result, meta = enrich_route(result, model, use_weather=True, use_elevation=True)
+    df_corridor = filter_corridor(df_all, result.points, corridor_km=5.0)
+    df = filter_stations(df_corridor, categories=["Rapide", "HPC", "Ultra-rapide"])
+    if not df.empty:
+        df = df.copy()
+        df["price_per_kwh"] = df.apply(
+            lambda row: estimate_price_per_kwh(
+                row.get("nom_operateur"),
+                float(row.get("puissance_nominale") or 50.0),
+            )[0],
+            axis=1,
+        )
+    return {"result": result, "meta": meta, "df": df}
+
+
+def _compute_one_plan(base: dict, soc, model, mode: str, fast_plan=None) -> dict:
+    """Phase 2 (fast): plan_trip + TomTom availability + cost for a single mode."""
+    result = base["result"]
+    df = base["df"]
+    tomtom_key = get_secret("TOMTOM_API_KEY")
+
+    if mode == "fast":
+        plan = plan_trip(result, df, model, initial_soc_pct=soc, mode="fast")
+    else:
+        fast_for_budget = fast_plan or plan_trip(result, df, model, initial_soc_pct=soc, mode="fast")
+        budget = fast_for_budget.total_time_s * 1.20
+        plan = plan_trip(result, df, model, initial_soc_pct=soc, mode="eco", price_weight=40.0)
+        for pw in (400.0, 250.0, 150.0, 80.0, 40.0):
+            cand = plan_trip(result, df, model, initial_soc_pct=soc, mode="eco", price_weight=pw)
+            if cand.feasible and cand.total_time_s <= budget:
+                plan = cand
+                break
+
+    if not plan.stops:
+        return {"plan": plan, "extras": [], "recharge": 0.0}
+
+    def _avail(s):
+        return fetch_availability(s.lat, s.lng, s.name, tomtom_key or "")
+
+    with ThreadPoolExecutor(max_workers=min(8, len(plan.stops))) as ex:
+        avails = list(ex.map(_avail, plan.stops))
+
+    extras = []
+    for s, avail in zip(plan.stops, avails):
+        tarif_text = None
+        if not df.empty and "tarification" in df.columns:
+            near = df[
+                (df["lat"].sub(s.lat).abs() < 1e-4)
+                & (df["lng"].sub(s.lng).abs() < 1e-4)
+            ]
+            if not near.empty:
+                tarif_text = near.iloc[0].get("tarification")
+        cost = estimate_stop_cost(s.operator, s.power_kw, s.kwh_added, tarif_text)
+        extras.append({"availability": avail, "cost": cost})
+    return {"plan": plan, "extras": extras, "recharge": sum(e["cost"]["total_eur"] for e in extras)}
+
+
+def _compute_variant_full(
+    origin_coords, destination_coords, soc, model, df_all, avoid_tolls,
+) -> dict:
+    """Compute the FULL variant (both modes) — used by background threads."""
+    base = _compute_route_base(
+        origin_coords, destination_coords, soc, model, df_all, avoid_tolls,
+    )
+    fast_data = _compute_one_plan(base, soc, model, "fast")
+    eco_data = _compute_one_plan(base, soc, model, "eco", fast_plan=fast_data["plan"])
+    return {
+        "result": base["result"],
+        "meta": base["meta"],
+        "_base": base,
+        "plans": {"fast": fast_data["plan"], "eco": eco_data["plan"]},
+        "extras": {"fast": fast_data["extras"], "eco": eco_data["extras"]},
+        "recharges": {"fast": fast_data["recharge"], "eco": eco_data["recharge"]},
+    }
+
+
 def compute_pipeline(inputs: dict) -> dict:
-    """Run HERE + enrichment + planner + availability + cost for a set of inputs.
-    Returns everything needed by render_result_view()."""
+    """Initial pipeline: only computes fast/toll (the most common combo).
+    The other 3 combos (eco/toll, fast/notoll, eco/notoll) are computed by
+    background threads as soon as the result page is displayed."""
     here_key = get_secret("HERE_API_KEY")
     if not here_key:
         raise RuntimeError("Aucune clé HERE_API_KEY trouvée.")
@@ -818,116 +904,30 @@ def compute_pipeline(inputs: dict) -> dict:
     if not origin_coords or not destination_coords:
         raise ValueError("Départ ou arrivée manquant.")
 
-    soc = inputs["soc"]
-    driving_style = inputs["driving_style"]
-    model = apply_driving_style(TESLA_M3_LR, driving_style)
+    model = apply_driving_style(TESLA_M3_LR, inputs["driving_style"])
     df_all = get_irve_cached()
-    corridor_km = 5.0
+    soc = inputs["soc"]
 
-    def pipeline(avoid_tolls: bool):
-        result = fetch_route_here(origin_coords, destination_coords, soc, model, here_key, avoid_tolls=avoid_tolls)
-        m: dict = {}
-        result, m = enrich_route(result, model, use_weather=True, use_elevation=True)
-        df_corridor = filter_corridor(df_all, result.points, corridor_km=corridor_km)
-        df = filter_stations(df_corridor, categories=["Rapide", "HPC", "Ultra-rapide"])
-        if not df.empty:
-            df = df.copy()
-            df["price_per_kwh"] = df.apply(
-                lambda row: estimate_price_per_kwh(
-                    row.get("nom_operateur"),
-                    float(row.get("puissance_nominale") or 50.0),
-                )[0],
-                axis=1,
-            )
-        m["stations"] = df
-        return result, m, df
-
-    # Run the two HERE routes in parallel — biggest single time saver.
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        f_toll = ex.submit(pipeline, False)
-        f_notoll = ex.submit(pipeline, True)
-        result_toll, meta_toll, df_toll = f_toll.result()
-        result_notoll, meta_notoll, df_notoll = f_notoll.result()
-
-    # Compute all 4 (mode, toll) combinations so the result page can toggle freely.
-    plan_fast_toll = plan_trip(result_toll, df_toll, model, initial_soc_pct=soc, mode="fast")
-    plan_fast_notoll = plan_trip(result_notoll, df_notoll, model, initial_soc_pct=soc, mode="fast")
-
-    def search_eco(result, df, time_budget_s):
-        fallback = plan_trip(result, df, model, initial_soc_pct=soc, mode="eco", price_weight=40.0)
-        for pw in (400.0, 250.0, 150.0, 80.0, 40.0):
-            cand = plan_trip(result, df, model, initial_soc_pct=soc, mode="eco", price_weight=pw)
-            if cand.feasible and cand.total_time_s <= time_budget_s:
-                return cand
-        return fallback
-
-    plan_eco_toll = search_eco(result_toll, df_toll, plan_fast_toll.total_time_s * 1.20)
-    plan_eco_notoll = search_eco(result_notoll, df_notoll, plan_fast_notoll.total_time_s * 1.20)
-
-    tomtom_key = get_secret("TOMTOM_API_KEY")
-
-    # Collect ALL unique stations across the 4 plans (by rounded coords),
-    # then fetch availability once per unique station in parallel.
-    plans_to_enrich = [
-        (plan_fast_toll, df_toll),
-        (plan_fast_notoll, df_notoll),
-        (plan_eco_toll, df_toll),
-        (plan_eco_notoll, df_notoll),
-    ]
-    seen_keys: set[tuple[float, float]] = set()
-    unique_stops: list[tuple[tuple[float, float], object]] = []
-    for plan, _ in plans_to_enrich:
-        for s in plan.stops:
-            k = (round(s.lat, 5), round(s.lng, 5))
-            if k not in seen_keys:
-                seen_keys.add(k)
-                unique_stops.append((k, s))
-
-    def _avail_one(item):
-        k, s = item
-        return k, fetch_availability(s.lat, s.lng, s.name, tomtom_key or "")
-
-    avail_by_key: dict[tuple[float, float], dict] = {}
-    if unique_stops:
-        with ThreadPoolExecutor(max_workers=min(12, len(unique_stops))) as ex:
-            for k, avail in ex.map(_avail_one, unique_stops):
-                avail_by_key[k] = avail
-
-    def enrich_stops(plan, df_src):
-        if not plan.stops:
-            return [], 0.0
-        extras = []
-        for s in plan.stops:
-            k = (round(s.lat, 5), round(s.lng, 5))
-            avail = avail_by_key.get(k) or {"label": "⚪ Inconnue", "status": "unknown"}
-            tarif_text = None
-            if not df_src.empty and "tarification" in df_src.columns:
-                near = df_src[
-                    (df_src["lat"].sub(s.lat).abs() < 1e-4)
-                    & (df_src["lng"].sub(s.lng).abs() < 1e-4)
-                ]
-                if not near.empty:
-                    tarif_text = near.iloc[0].get("tarification")
-            cost = estimate_stop_cost(s.operator, s.power_kw, s.kwh_added, tarif_text)
-            extras.append({"availability": avail, "cost": cost})
-        total = sum(e["cost"]["total_eur"] for e in extras)
-        return extras, total
-
-    extras_fast_toll, rc_fast_toll = enrich_stops(plan_fast_toll, df_toll)
-    extras_fast_notoll, rc_fast_notoll = enrich_stops(plan_fast_notoll, df_notoll)
-    extras_eco_toll, rc_eco_toll = enrich_stops(plan_eco_toll, df_toll)
-    extras_eco_notoll, rc_eco_notoll = enrich_stops(plan_eco_notoll, df_notoll)
+    # Compute the toll base (HERE + enrich + stations) and the fast plan only.
+    base_toll = _compute_route_base(
+        origin_coords, destination_coords, soc, model, df_all, avoid_tolls=False,
+    )
+    fast_toll = _compute_one_plan(base_toll, soc, model, "fast")
 
     return {
         "origin": origin_coords,
         "destination": destination_coords,
-        "results": {"toll": result_toll, "notoll": result_notoll},
-        "metas": {"toll": meta_toll, "notoll": meta_notoll},
-        "combos": {
-            ("fast", "toll"): {"plan": plan_fast_toll, "extras": extras_fast_toll, "recharge": rc_fast_toll},
-            ("fast", "notoll"): {"plan": plan_fast_notoll, "extras": extras_fast_notoll, "recharge": rc_fast_notoll},
-            ("eco", "toll"): {"plan": plan_eco_toll, "extras": extras_eco_toll, "recharge": rc_eco_toll},
-            ("eco", "notoll"): {"plan": plan_eco_notoll, "extras": extras_eco_notoll, "recharge": rc_eco_notoll},
+        "soc": soc,
+        "model": model,
+        "variants": {
+            "toll": {
+                "result": base_toll["result"],
+                "meta": base_toll["meta"],
+                "_base": base_toll,  # reused by background eco_toll computation
+                "plans": {"fast": fast_toll["plan"]},
+                "extras": {"fast": fast_toll["extras"]},
+                "recharges": {"fast": fast_toll["recharge"]},
+            }
         },
     }
 
@@ -1020,12 +1020,83 @@ def render_loading_view() -> None:
 def render_result_view() -> None:
     data = st.session_state.result_data
 
+    # As soon as the result view loads, kick off background computations for
+    # the 3 remaining combos so they're ready when the user toggles.
+    if "bg_executor" not in st.session_state:
+        executor = ThreadPoolExecutor(max_workers=2)
+        st.session_state.bg_executor = executor
+        df_all = get_irve_cached()
+        toll_base = data["variants"]["toll"].get("_base")
+        # Thread 1: eco for toll variant — reuses HERE+enrich already done.
+        if toll_base:
+            st.session_state.bg_eco_toll = executor.submit(
+                _compute_one_plan, toll_base, data["soc"], data["model"], "eco",
+                data["variants"]["toll"]["plans"]["fast"],
+            )
+        # Thread 2: full no-toll variant (HERE + enrich + fast + eco).
+        st.session_state.bg_notoll = executor.submit(
+            _compute_variant_full,
+            data["origin"], data["destination"],
+            data["soc"], data["model"], df_all, True,
+        )
+
+    def _ensure_eco_toll() -> None:
+        """If toll/eco not yet computed, wait on the background thread."""
+        if "eco" in data["variants"]["toll"]["plans"]:
+            return
+        future = st.session_state.get("bg_eco_toll")
+        if future is None:
+            # Fallback: compute synchronously
+            toll_base = data["variants"]["toll"].get("_base")
+            eco_data = _compute_one_plan(
+                toll_base, data["soc"], data["model"], "eco",
+                data["variants"]["toll"]["plans"]["fast"],
+            )
+        else:
+            spin_text = "Finalisation du mode économique…" if not future.done() else None
+            if spin_text:
+                with st.spinner(spin_text):
+                    eco_data = future.result(timeout=30)
+            else:
+                eco_data = future.result()
+            st.session_state.pop("bg_eco_toll", None)
+        data["variants"]["toll"]["plans"]["eco"] = eco_data["plan"]
+        data["variants"]["toll"]["extras"]["eco"] = eco_data["extras"]
+        data["variants"]["toll"]["recharges"]["eco"] = eco_data["recharge"]
+        st.session_state.result_data = data
+
+    def _ensure_notoll() -> None:
+        """If notoll variant not yet computed, wait on the background thread."""
+        if "notoll" in data["variants"]:
+            return
+        future = st.session_state.get("bg_notoll")
+        if future is None:
+            df_all = get_irve_cached()
+            data["variants"]["notoll"] = _compute_variant_full(
+                data["origin"], data["destination"],
+                data["soc"], data["model"], df_all, True,
+            )
+        else:
+            spin_text = "Finalisation du trajet sans péage…" if not future.done() else None
+            if spin_text:
+                with st.spinner(spin_text):
+                    data["variants"]["notoll"] = future.result(timeout=60)
+            else:
+                data["variants"]["notoll"] = future.result()
+            st.session_state.pop("bg_notoll", None)
+        st.session_state.result_data = data
+
     # Compact title row: back button + personalized title.
     col_back, col_title = st.columns([2, 7])
     with col_back:
         if st.button("← Nouveau", key="back_btn"):
             st.session_state.step = "input"
             st.session_state.pop("result_data", None)
+            st.session_state.pop("bg_eco_toll", None)
+            st.session_state.pop("bg_notoll", None)
+            executor = st.session_state.pop("bg_executor", None)
+            if executor:
+                executor.shutdown(wait=False)
             st.rerun()
     with col_title:
         st.markdown(
@@ -1050,12 +1121,26 @@ def render_result_view() -> None:
     mode_key = "fast" if mode_choice == "Rapide" else "eco"
     toll_key = "toll" if toll_choice == "Avec péage" else "notoll"
 
-    combo = data["combos"][(mode_key, toll_key)]
-    plan = combo["plan"]
-    extras = combo["extras"]
-    recharge_cost = combo["recharge"]
-    result = data["results"][toll_key]
-    meta_base = data["metas"][toll_key]
+    # Ensure the selected combo has been computed (waits on background threads
+    # if needed). Initial fast/toll is always present from compute_pipeline.
+    try:
+        if toll_key == "notoll":
+            _ensure_notoll()
+        if mode_key == "eco" and toll_key == "toll":
+            _ensure_eco_toll()
+        # For eco/notoll: _ensure_notoll already brings in both plans.
+    except Exception as e:
+        st.warning(f"Calcul indisponible : {e}")
+        st.session_state.mode_toggle = "Rapide"
+        st.session_state.toll_toggle = "Avec péage"
+        st.rerun()
+
+    variant = data["variants"][toll_key]
+    plan = variant["plans"][mode_key]
+    extras = variant["extras"][mode_key]
+    recharge_cost = variant["recharges"][mode_key]
+    result = variant["result"]
+    meta_base = variant["meta"]
     toll_cost = result.total_toll_eur
     n_stops = len(plan.stops)
 
