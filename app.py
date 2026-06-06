@@ -150,9 +150,24 @@ def soc_color(soc: float) -> str:
 
 st.set_page_config(
     page_title="EV Route Planner",
-    page_icon="assets/logo-qivia.png",
+    page_icon="assets/apple-touch-icon.png",
     layout="centered",
     initial_sidebar_state="collapsed",
+)
+
+# PWA / iOS home-screen hints — apple-touch-icon, dark status bar, short title.
+st.markdown(
+    """
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Qivia EV">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#03060D">
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="assets/apple-touch-icon.png">
+    """,
+    unsafe_allow_html=True,
 )
 
 st.markdown(
@@ -769,23 +784,65 @@ def compute_pipeline(inputs: dict) -> dict:
 # ============================================================================
 
 def render_loading_view() -> None:
-    st.markdown("<div style='height: 4rem'></div>", unsafe_allow_html=True)
-    col_l, col_c, col_r = st.columns([1, 2, 1])
-    with col_c:
-        st.image("assets/logo-qivia.png", width=180)
+    # Centered loading screen with a big custom spinner. Inputs from the previous
+    # step are not rendered because the dispatcher routes here exclusively.
+    import base64
+    logo_b64 = ""
+    try:
+        with open("assets/logo-qivia.png", "rb") as fp:
+            logo_b64 = base64.b64encode(fp.read()).decode("ascii")
+    except Exception:
+        pass
     st.markdown(
-        "<h2 style='text-align:center;color:#5FFFA7;margin-top:2rem;'>Calcul en cours…</h2>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<p style='text-align:center;color:#9AA3B2;'>"
-        "Itinéraire, météo, dénivelé, bornes, prix"
-        "</p>",
+        f"""
+        <style>
+        .qivia-loading {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 70vh;
+            text-align: center;
+            padding: 1rem;
+        }}
+        .qivia-loading img {{
+            width: 200px;
+            height: auto;
+            margin-bottom: 2rem;
+        }}
+        .qivia-loading h2 {{
+            color: #5FFFA7 !important;
+            margin: 0 0 0.5rem 0;
+            font-size: 1.8rem;
+        }}
+        .qivia-loading p {{
+            color: #9AA3B2;
+            font-size: 0.95rem;
+            margin: 0 0 2rem 0;
+        }}
+        .qivia-spinner {{
+            width: 90px;
+            height: 90px;
+            border: 6px solid rgba(95, 255, 167, 0.15);
+            border-top-color: #5FFFA7;
+            border-radius: 50%;
+            animation: qspin 1s linear infinite;
+        }}
+        @keyframes qspin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        </style>
+        <div class="qivia-loading">
+          {"<img src='data:image/png;base64," + logo_b64 + "' alt='Qivia' />" if logo_b64 else ""}
+          <h2>Calcul en cours…</h2>
+          <p>Itinéraire, météo, dénivelé, bornes, prix</p>
+          <div class="qivia-spinner"></div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
     try:
-        with st.spinner(""):
-            st.session_state.result_data = compute_pipeline(st.session_state.inputs)
+        st.session_state.result_data = compute_pipeline(st.session_state.inputs)
         st.session_state.step = "result"
     except Exception as e:
         st.session_state.error = str(e)
