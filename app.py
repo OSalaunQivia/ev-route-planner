@@ -357,6 +357,10 @@ def _render_header() -> None:
 
 
 def _check_password() -> None:
+    # Streamlit's session_state can be lost on cold start / iOS tab sleep.
+    # Persist the auth marker in the URL query so it survives those resets.
+    if "auth" in st.query_params:
+        st.session_state["auth_ok"] = True
     if st.session_state.get("auth_ok"):
         return
     expected = get_secret("ACCESS_PASSWORD_HASH")
@@ -396,6 +400,9 @@ def _check_password() -> None:
     if pwd:
         if hashlib.sha256(pwd.encode()).hexdigest() == expected:
             st.session_state["auth_ok"] = True
+            # Persist via URL so the auth survives Streamlit session resets
+            # (cold start, iOS tab sleep, mobile network blip, etc.).
+            st.query_params["auth"] = "ok"
             st.rerun()
         else:
             st.error("Code invalide")
@@ -1086,17 +1093,20 @@ def render_result_view() -> None:
             st.session_state.pop("bg_notoll", None)
         st.session_state.result_data = data
 
+    def _back_to_input():
+        st.session_state.step = "input"
+        st.session_state.pop("result_data", None)
+        st.session_state.pop("bg_eco_toll", None)
+        st.session_state.pop("bg_notoll", None)
+        executor = st.session_state.pop("bg_executor", None)
+        if executor:
+            executor.shutdown(wait=False)
+
     # Compact title row: back button + personalized title.
-    col_back, col_title = st.columns([2, 7])
+    col_back, col_title = st.columns([3, 6])
     with col_back:
-        if st.button("← Nouveau", key="back_btn"):
-            st.session_state.step = "input"
-            st.session_state.pop("result_data", None)
-            st.session_state.pop("bg_eco_toll", None)
-            st.session_state.pop("bg_notoll", None)
-            executor = st.session_state.pop("bg_executor", None)
-            if executor:
-                executor.shutdown(wait=False)
+        if st.button("← Nouveau trajet", key="back_btn_top", use_container_width=True):
+            _back_to_input()
             st.rerun()
     with col_title:
         st.markdown(
@@ -1204,6 +1214,13 @@ def render_result_view() -> None:
         "total_cost_eur": recharge_cost + toll_cost,
     }
     render_trip_body(result, plan, data["origin"], data["destination"], meta, f"{mode_key}_{toll_key}")
+
+    # Big primary button after the map: easy way to plan another trip.
+    st.markdown("<div style='height:0.8rem'></div>", unsafe_allow_html=True)
+    if st.button("Calculer un autre trajet", type="primary", key="back_btn_bottom",
+                 use_container_width=True):
+        _back_to_input()
+        st.rerun()
 
 
 # ============================================================================
