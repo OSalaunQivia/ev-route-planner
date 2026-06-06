@@ -504,12 +504,13 @@ def render_input_view() -> None:
     _render_header()
 
     with st.expander("Mon trajet", expanded=True):
-        # Silent auto-geolocation on the very first load. The browser shows
-        # its native permission prompt; if accepted, we reverse-geocode the
-        # coords to a clean human-readable address.
-        if "geoloc_attempted" not in st.session_state:
+        # Silent auto-geolocation. get_geolocation() is asynchronous: the first
+        # render returns None while the browser prompt is up. Once the user
+        # grants permission, the JS resolves and Streamlit reruns with the
+        # coords. We keep calling until we have a result (the component caches
+        # internally so no re-prompt).
+        if "geoloc_coords" not in st.session_state:
             loc = get_geolocation()
-            st.session_state.geoloc_attempted = True
             if loc and loc.get("coords"):
                 lat = float(loc["coords"]["latitude"])
                 lng = float(loc["coords"]["longitude"])
