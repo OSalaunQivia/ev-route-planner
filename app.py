@@ -517,7 +517,120 @@ def render_input_view() -> None:
 # Result rendering
 # ============================================================================
 
-def render_trip(
+def render_trip_body(
+    result: RouteResult,
+    plan: TripPlan,
+    origin,
+    destination,
+    meta: dict | None = None,
+    key_suffix: str = "main",
+) -> None:
+    """Map + stops list only. Metrics + title are handled by the caller."""
+    if not plan.feasible:
+        st.error(f"Trajet non réalisable : {plan.reason}")
+
+    # Map
+    m = folium.Map(tiles="CartoDB dark_matter")
+    pts = plan.updated_points
+    all_lats, all_lngs = [], []
+    for i in range(len(pts) - 1):
+        a, b = pts[i], pts[i + 1]
+        color = soc_color((a.soc_pct + b.soc_pct) / 2)
+        folium.PolyLine(
+            [(a.lat, a.lng), (b.lat, b.lng)],
+            color=color, weight=5, opacity=0.85,
+        ).add_to(m)
+        all_lats.append(a.lat)
+        all_lngs.append(a.lng)
+    if pts:
+        all_lats.append(pts[-1].lat)
+        all_lngs.append(pts[-1].lng)
+    folium.Marker(origin, tooltip="Départ", icon=folium.Icon(color="green")).add_to(m)
+    folium.Marker(destination, tooltip="Arrivée", icon=folium.Icon(color="blue")).add_to(m)
+    for i, s in enumerate(plan.stops):
+        folium.Marker(
+            location=[s.lat, s.lng],
+            tooltip=(
+                f"#{i+1} — {s.name}<br>"
+                f"{s.power_kw:.0f} kW • {s.operator}<br>"
+                f"{s.kwh_added:.0f} kWh • {fmt_duration(s.charge_time_min * 60)}"
+            ),
+            icon=folium.DivIcon(
+                html=(
+                    f'<div style="background:#5FFFA7;color:#03060D;border-radius:50%;'
+                    f'width:30px;height:30px;display:flex;align-items:center;justify-content:center;'
+                    f'font-weight:700;border:2px solid #03060D;'
+                    f'box-shadow:0 2px 8px rgba(0,0,0,0.5);">{i+1}</div>'
+                ),
+                icon_size=(30, 30),
+                icon_anchor=(15, 15),
+            ),
+        ).add_to(m)
+    if all_lats and all_lngs:
+        m.fit_bounds(
+            [[min(all_lats), min(all_lngs)], [max(all_lats), max(all_lngs)]],
+            padding=(20, 20),
+        )
+    st_folium(m, height=380, width=None, returned_objects=[], key=f"map_{key_suffix}")
+
+    # Stops list (1 column, full width)
+    if plan.stops:
+        st.markdown(
+            "<div style='font-weight:700;font-size:1.05rem;margin:0.8rem 0 0.5rem 0;'>"
+            "Arrêts recharge</div>",
+            unsafe_allow_html=True,
+        )
+        extras = meta.get("stops_extras", []) if meta else []
+        for idx, s in enumerate(plan.stops):
+            extra = extras[idx] if idx < len(extras) else {}
+            avail = extra.get("availability") or {"label": "⚪ Inconnue"}
+            cost = extra.get("cost") or {}
+            city_line = s.city if s.city else "&nbsp;"
+            avail_extra = ""
+            if avail.get("n_total"):
+                avail_extra = f" ({avail.get('n_available', 0)}/{avail['n_total']})"
+            price_line = ""
+            if cost:
+                price_line = (
+                    f'<div style="display:flex;justify-content:space-between;'
+                    f'margin-top:0.4rem;font-size:0.9rem;">'
+                    f'<span style="color:#9AA3B2;">{cost["price_per_kwh"]:.2f} €/kWh</span>'
+                    f'<span style="color:#FFFFFF;font-weight:600;">'
+                    f'{cost["total_eur"]:.1f} €</span></div>'
+                )
+            st.markdown(
+                f"""
+                <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
+                            padding:0.9rem 1.1rem;margin-bottom:0.6rem;">
+                  <div style="font-weight:700;color:#5FFFA7;font-size:1rem;
+                              margin-bottom:0.35rem;">#{idx+1} — {s.name}</div>
+                  <div style="color:#9AA3B2;font-size:0.82rem;line-height:1.5;">
+                    {city_line} · {s.operator}<br>
+                    {avail['label']}{avail_extra}
+                  </div>
+                  <div style="display:flex;justify-content:space-between;margin-top:0.55rem;
+                              font-size:0.9rem;color:#FFFFFF;">
+                    <span>km {s.km:.0f}</span><span>{s.power_kw:.0f} kW</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;margin-top:0.35rem;
+                              font-size:0.9rem;">
+                    <span style="color:#9AA3B2;">
+                      {s.soc_arrival_pct:.0f} % → {s.soc_leave_pct:.0f} %
+                    </span>
+                    <span style="color:#5FFFA7;font-weight:600;">
+                      {fmt_duration(s.charge_time_min * 60)}
+                    </span>
+                  </div>
+                  {price_line}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    else:
+        st.caption("Aucun arrêt nécessaire.")
+
+
+def render_trip(  # kept for backward compat — wraps render_trip_body
     result: RouteResult,
     plan: TripPlan,
     origin,
@@ -703,8 +816,9 @@ def compute_pipeline(inputs: dict) -> dict:
     result_toll, meta_toll, df_toll = pipeline(avoid_tolls=False)
     result_notoll, meta_notoll, df_notoll = pipeline(avoid_tolls=True)
 
-    plan_fast = plan_trip(result_toll, df_toll, model, initial_soc_pct=soc, mode="fast")
-    budget_s = plan_fast.total_time_s * 1.20
+    # Compute all 4 (mode, toll) combinations so the result page can toggle freely.
+    plan_fast_toll = plan_trip(result_toll, df_toll, model, initial_soc_pct=soc, mode="fast")
+    plan_fast_notoll = plan_trip(result_notoll, df_notoll, model, initial_soc_pct=soc, mode="fast")
 
     def search_eco(result, df, time_budget_s):
         fallback = plan_trip(result, df, model, initial_soc_pct=soc, mode="eco", price_weight=40.0)
@@ -714,8 +828,8 @@ def compute_pipeline(inputs: dict) -> dict:
                 return cand
         return fallback
 
-    plan_eco_a = search_eco(result_toll, df_toll, budget_s)
-    plan_eco_b = search_eco(result_notoll, df_notoll, plan_fast.total_time_s * 1.50)
+    plan_eco_toll = search_eco(result_toll, df_toll, plan_fast_toll.total_time_s * 1.20)
+    plan_eco_notoll = search_eco(result_notoll, df_notoll, plan_fast_notoll.total_time_s * 1.20)
 
     tomtom_key = get_secret("TOMTOM_API_KEY")
 
@@ -736,46 +850,22 @@ def compute_pipeline(inputs: dict) -> dict:
             total += cost["total_eur"]
         return extras, total
 
-    extras_fast, recharge_fast = enrich_stops(plan_fast, df_toll)
-    extras_eco_a, recharge_eco_a = enrich_stops(plan_eco_a, df_toll)
-    extras_eco_b, recharge_eco_b = enrich_stops(plan_eco_b, df_notoll)
-
-    total_fast = recharge_fast + result_toll.total_toll_eur
-    total_eco_a = recharge_eco_a + result_toll.total_toll_eur
-    total_eco_b = recharge_eco_b
-
-    if total_eco_b < total_eco_a:
-        plan_eco = plan_eco_b
-        result_eco = result_notoll
-        meta_eco_base = meta_notoll
-        extras_eco = extras_eco_b
-        recharge_eco = recharge_eco_b
-        eco_uses_notoll = True
-    else:
-        plan_eco = plan_eco_a
-        result_eco = result_toll
-        meta_eco_base = meta_toll
-        extras_eco = extras_eco_a
-        recharge_eco = recharge_eco_a
-        eco_uses_notoll = False
-    total_eco = recharge_eco + result_eco.total_toll_eur
+    extras_fast_toll, rc_fast_toll = enrich_stops(plan_fast_toll, df_toll)
+    extras_fast_notoll, rc_fast_notoll = enrich_stops(plan_fast_notoll, df_notoll)
+    extras_eco_toll, rc_eco_toll = enrich_stops(plan_eco_toll, df_toll)
+    extras_eco_notoll, rc_eco_notoll = enrich_stops(plan_eco_notoll, df_notoll)
 
     return {
         "origin": origin_coords,
         "destination": destination_coords,
-        "result_toll": result_toll,
-        "result_eco": result_eco,
-        "plan_fast": plan_fast,
-        "plan_eco": plan_eco,
-        "meta_toll": meta_toll,
-        "meta_eco_base": meta_eco_base,
-        "extras_fast": extras_fast,
-        "extras_eco": extras_eco,
-        "recharge_fast": recharge_fast,
-        "recharge_eco": recharge_eco,
-        "total_fast": total_fast,
-        "total_eco": total_eco,
-        "eco_uses_notoll": eco_uses_notoll,
+        "results": {"toll": result_toll, "notoll": result_notoll},
+        "metas": {"toll": meta_toll, "notoll": meta_notoll},
+        "combos": {
+            ("fast", "toll"): {"plan": plan_fast_toll, "extras": extras_fast_toll, "recharge": rc_fast_toll},
+            ("fast", "notoll"): {"plan": plan_fast_notoll, "extras": extras_fast_notoll, "recharge": rc_fast_notoll},
+            ("eco", "toll"): {"plan": plan_eco_toll, "extras": extras_eco_toll, "recharge": rc_eco_toll},
+            ("eco", "notoll"): {"plan": plan_eco_notoll, "extras": extras_eco_notoll, "recharge": rc_eco_notoll},
+        },
     }
 
 
@@ -865,54 +955,107 @@ def render_loading_view() -> None:
 # ============================================================================
 
 def render_result_view() -> None:
-    col_back, col_title = st.columns([2, 5])
+    data = st.session_state.result_data
+
+    # Compact title row: back button + personalized title.
+    col_back, col_title = st.columns([2, 7])
     with col_back:
-        if st.button("← Nouveau trajet", key="back_btn"):
+        if st.button("← Nouveau", key="back_btn"):
             st.session_state.step = "input"
             st.session_state.pop("result_data", None)
             st.rerun()
     with col_title:
         st.markdown(
-            '<h2 style="margin-top:0.4rem;font-size:1.2rem;color:#FFFFFF;">Votre trajet</h2>',
+            '<h2 style="margin:0.4rem 0 0 0;font-size:1.25rem;color:#FFFFFF;line-height:1.2;">'
+            'Voilà votre trajet <span class="qivia-highlight">Arthur</span>'
+            '</h2>',
             unsafe_allow_html=True,
         )
 
-    data = st.session_state.result_data
-    notoll_tag = "<span style='color:#5FFFA7;'>· sans péage</span>" if data["eco_uses_notoll"] else ""
+    # Two toggles in one row — pick the strategy + the toll option.
+    t1, t2 = st.columns(2)
+    with t1:
+        mode_choice = st.radio(
+            "Stratégie", ["Rapide", "Économique"],
+            horizontal=True, key="mode_toggle", label_visibility="collapsed",
+        )
+    with t2:
+        toll_choice = st.radio(
+            "Péage", ["Avec péage", "Sans péage"],
+            horizontal=True, key="toll_toggle", label_visibility="collapsed",
+        )
+    mode_key = "fast" if mode_choice == "Rapide" else "eco"
+    toll_key = "toll" if toll_choice == "Avec péage" else "notoll"
+
+    combo = data["combos"][(mode_key, toll_key)]
+    plan = combo["plan"]
+    extras = combo["extras"]
+    recharge_cost = combo["recharge"]
+    result = data["results"][toll_key]
+    meta_base = data["metas"][toll_key]
+    toll_cost = result.total_toll_eur
+    n_stops = len(plan.stops)
+
+    # Compact 5-metric row that fits on a single mobile line.
+    st.markdown(
+        """
+        <style>
+        .result-metrics {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 0.4rem;
+            margin: 0.7rem 0 0.6rem 0;
+        }
+        .result-metric {
+            background: #0B111C;
+            border: 1px solid #1A2030;
+            border-radius: 8px;
+            padding: 0.5rem 0.4rem;
+            text-align: center;
+        }
+        .result-metric .lbl {
+            color: #9AA3B2;
+            font-size: 0.65rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .result-metric .val {
+            color: #5FFFA7;
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-top: 0.2rem;
+            white-space: nowrap;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown(
         f"""
-        <div style="display:flex;gap:1rem;margin:1rem 0 0.6rem 0;
-                    color:#9AA3B2;font-size:0.9rem;flex-wrap:wrap;">
-          <span><b style="color:#5FFFA7;">Rapide</b>
-            &nbsp;{fmt_duration(data['plan_fast'].total_time_s)} · {data['total_fast']:.0f} € · {len(data['plan_fast'].stops)} arr.</span>
-          <span><b style="color:#5FFFA7;">Éco</b>
-            &nbsp;{fmt_duration(data['plan_eco'].total_time_s)} · {data['total_eco']:.0f} € · {len(data['plan_eco'].stops)} arr.
-            {notoll_tag}</span>
+        <div class="result-metrics">
+          <div class="result-metric"><div class="lbl">Distance</div><div class="val">{result.total_km:.0f} km</div></div>
+          <div class="result-metric"><div class="lbl">Durée</div><div class="val">{fmt_duration(plan.total_time_s)}</div></div>
+          <div class="result-metric"><div class="lbl">Recharge</div><div class="val">{recharge_cost:.0f} €</div></div>
+          <div class="result-metric"><div class="lbl">Péage</div><div class="val">{toll_cost:.0f} €</div></div>
+          <div class="result-metric"><div class="lbl">Arrêts</div><div class="val">{n_stops}</div></div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    tab_fast, tab_eco = st.tabs(["Rapide", "Économique"])
-    with tab_fast:
-        meta_fast = {
-            **data["meta_toll"],
-            "stops_extras": data["extras_fast"],
-            "recharge_cost_eur": data["recharge_fast"],
-            "toll_eur": data["result_toll"].total_toll_eur,
-            "total_cost_eur": data["total_fast"],
-        }
-        render_trip(data["result_toll"], data["plan_fast"], data["origin"], data["destination"], meta_fast, "fast")
-    with tab_eco:
-        meta_eco = {
-            **data["meta_eco_base"],
-            "stops_extras": data["extras_eco"],
-            "recharge_cost_eur": data["recharge_eco"],
-            "toll_eur": data["result_eco"].total_toll_eur,
-            "total_cost_eur": data["total_eco"],
-            "uses_notoll": data["eco_uses_notoll"],
-        }
-        render_trip(data["result_eco"], data["plan_eco"], data["origin"], data["destination"], meta_eco, "eco")
+    # Map + stops.
+    meta = {
+        **meta_base,
+        "stops_extras": extras,
+        "recharge_cost_eur": recharge_cost,
+        "toll_eur": toll_cost,
+        "total_cost_eur": recharge_cost + toll_cost,
+    }
+    render_trip_body(result, plan, data["origin"], data["destination"], meta, f"{mode_key}_{toll_key}")
 
 
 # ============================================================================
