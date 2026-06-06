@@ -532,10 +532,28 @@ def render_trip_body(
     # Map. Downsample the polyline to ~80 segments so folium HTML stays small
     # and the iframe initializes in <500ms (vs ~3-4s on full resolution).
     m = folium.Map(tiles="CartoDB dark_matter")
-    # Hide the Leaflet / OpenStreetMap / CARTO attribution bar inside the map iframe.
-    # (Personal use only — OSM/Carto require attribution for redistribution.)
+    # Hide attribution + style the Leaflet popup wrapper to match the dark theme.
     m.get_root().html.add_child(folium.Element(
-        "<style>.leaflet-control-attribution { display: none !important; }</style>"
+        """
+        <style>
+          .leaflet-control-attribution { display: none !important; }
+          .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background: #0B111C !important;
+            color: #FFFFFF !important;
+            border: 1px solid #1A2030 !important;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.5) !important;
+          }
+          .leaflet-popup-content {
+            margin: 0.7rem 0.8rem !important;
+            font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
+          }
+          .leaflet-popup-close-button {
+            color: #5FFFA7 !important;
+            font-size: 1.3rem !important;
+            padding: 6px !important;
+          }
+        </style>
+        """
     ))
     pts_full = plan.updated_points
     TARGET_SEGMENTS = 80
@@ -558,14 +576,50 @@ def render_trip_body(
         all_lngs.append(pts[-1].lng)
     folium.Marker(origin, tooltip="Départ", icon=folium.Icon(color="green")).add_to(m)
     folium.Marker(destination, tooltip="Arrivée", icon=folium.Icon(color="blue")).add_to(m)
+
+    extras = meta.get("stops_extras", []) if meta else []
     for i, s in enumerate(plan.stops):
+        extra = extras[i] if i < len(extras) else {}
+        avail = extra.get("availability") or {"label": "⚪ Inconnue"}
+        cost = extra.get("cost") or {}
+        city_line = s.city if s.city else ""
+        avail_extra = (
+            f" ({avail.get('n_available', 0)}/{avail['n_total']})"
+            if avail.get("n_total") else ""
+        )
+        price_line = ""
+        if cost:
+            price_line = (
+                f'<div style="display:flex;justify-content:space-between;'
+                f'margin-top:0.3rem;font-size:0.82rem;">'
+                f'<span style="color:#9AA3B2;">{cost["price_per_kwh"]:.2f} €/kWh</span>'
+                f'<span style="color:#FFFFFF;font-weight:600;">{cost["total_eur"]:.1f} €</span></div>'
+            )
+        popup_html = (
+            f'<div style="min-width:200px;max-width:240px;color:#FFFFFF;'
+            f'font-family:Plus Jakarta Sans,-apple-system,sans-serif;">'
+            f'  <div style="font-weight:700;color:#5FFFA7;font-size:0.95rem;'
+            f'              margin-bottom:0.3rem;line-height:1.2;">#{i+1} — {s.name}</div>'
+            f'  <div style="color:#9AA3B2;font-size:0.78rem;line-height:1.5;">'
+            f'    {city_line}{"<br>" if city_line else ""}{s.operator}<br>'
+            f'    {avail["label"]}{avail_extra}'
+            f'  </div>'
+            f'  <div style="display:flex;justify-content:space-between;margin-top:0.45rem;'
+            f'              font-size:0.85rem;color:#FFFFFF;">'
+            f'    <span>km {s.km:.0f}</span><span>{s.power_kw:.0f} kW</span>'
+            f'  </div>'
+            f'  <div style="display:flex;justify-content:space-between;margin-top:0.3rem;'
+            f'              font-size:0.85rem;">'
+            f'    <span style="color:#9AA3B2;">{s.soc_arrival_pct:.0f}% → {s.soc_leave_pct:.0f}%</span>'
+            f'    <span style="color:#5FFFA7;font-weight:600;">{fmt_duration(s.charge_time_min * 60)}</span>'
+            f'  </div>'
+            f'  {price_line}'
+            f'</div>'
+        )
         folium.Marker(
             location=[s.lat, s.lng],
-            tooltip=(
-                f"#{i+1} — {s.name}<br>"
-                f"{s.power_kw:.0f} kW • {s.operator}<br>"
-                f"{s.kwh_added:.0f} kWh • {fmt_duration(s.charge_time_min * 60)}"
-            ),
+            tooltip=f"#{i+1} — {s.name}",
+            popup=folium.Popup(popup_html, max_width=260),
             icon=folium.DivIcon(
                 html=(
                     f'<div style="background:#5FFFA7;color:#03060D;border-radius:50%;'
@@ -577,6 +631,7 @@ def render_trip_body(
                 icon_anchor=(15, 15),
             ),
         ).add_to(m)
+
     if all_lats and all_lngs:
         m.fit_bounds(
             [[min(all_lats), min(all_lngs)], [max(all_lats), max(all_lngs)]],
@@ -585,63 +640,7 @@ def render_trip_body(
     # Key includes the plan's signature so any change in route/stops triggers
     # a new st_folium widget (instead of reusing a cached iframe).
     content_sig = f"{result.total_km:.0f}_{plan.total_time_s:.0f}_{len(plan.stops)}_{key_suffix}"
-    st_folium(m, height=380, width=None, returned_objects=[], key=f"map_{content_sig}")
-
-    # Stops list (1 column, full width)
-    if plan.stops:
-        st.markdown(
-            "<div style='font-weight:700;font-size:1.05rem;margin:0.8rem 0 0.5rem 0;'>"
-            "Arrêts recharge</div>",
-            unsafe_allow_html=True,
-        )
-        extras = meta.get("stops_extras", []) if meta else []
-        for idx, s in enumerate(plan.stops):
-            extra = extras[idx] if idx < len(extras) else {}
-            avail = extra.get("availability") or {"label": "⚪ Inconnue"}
-            cost = extra.get("cost") or {}
-            city_line = s.city if s.city else "&nbsp;"
-            avail_extra = ""
-            if avail.get("n_total"):
-                avail_extra = f" ({avail.get('n_available', 0)}/{avail['n_total']})"
-            price_line = ""
-            if cost:
-                price_line = (
-                    f'<div style="display:flex;justify-content:space-between;'
-                    f'margin-top:0.4rem;font-size:0.9rem;">'
-                    f'<span style="color:#9AA3B2;">{cost["price_per_kwh"]:.2f} €/kWh</span>'
-                    f'<span style="color:#FFFFFF;font-weight:600;">'
-                    f'{cost["total_eur"]:.1f} €</span></div>'
-                )
-            st.markdown(
-                f"""
-                <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
-                            padding:0.9rem 1.1rem;margin-bottom:0.6rem;">
-                  <div style="font-weight:700;color:#5FFFA7;font-size:1rem;
-                              margin-bottom:0.35rem;">#{idx+1} — {s.name}</div>
-                  <div style="color:#9AA3B2;font-size:0.82rem;line-height:1.5;">
-                    {city_line} · {s.operator}<br>
-                    {avail['label']}{avail_extra}
-                  </div>
-                  <div style="display:flex;justify-content:space-between;margin-top:0.55rem;
-                              font-size:0.9rem;color:#FFFFFF;">
-                    <span>km {s.km:.0f}</span><span>{s.power_kw:.0f} kW</span>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;margin-top:0.35rem;
-                              font-size:0.9rem;">
-                    <span style="color:#9AA3B2;">
-                      {s.soc_arrival_pct:.0f} % → {s.soc_leave_pct:.0f} %
-                    </span>
-                    <span style="color:#5FFFA7;font-weight:600;">
-                      {fmt_duration(s.charge_time_min * 60)}
-                    </span>
-                  </div>
-                  {price_line}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-    else:
-        st.caption("Aucun arrêt nécessaire.")
+    st_folium(m, height=420, width=None, returned_objects=[], key=f"map_{content_sig}")
 
 
 def render_trip(  # kept for backward compat — wraps render_trip_body
