@@ -495,8 +495,23 @@ SEARCHBOX_STYLE = {
 VEHICLE_NAME = TESLA_M3_LR["name"]
 VEHICLE_CURRENT_SOC = 67
 VEHICLE_DEFAULT_STYLE = "Dynamique"
-VEHICLE_LOCATION_LABEL = "52 Rue Laugier, 75017 Paris"
-VEHICLE_LOCATION_COORDS = "48.886300,2.295000"
+VEHICLE_LOCATION_LABEL = "52 rue de Picpus, 75012 Paris"
+VEHICLE_LOCATION_COORDS = "48.846800,2.394500"
+
+
+def _search_origin(query: str) -> list[tuple[str, str]]:
+    """Departure search: returns the two quick picks (Votre position / Votre voiture)
+    plus Photon address results when the user types."""
+    options: list[tuple[str, str]] = []
+    geo_label = st.session_state.get("geoloc_label")
+    geo_coords = st.session_state.get("geoloc_coords")
+    if geo_coords:
+        sub = f"({geo_label})" if geo_label else ""
+        options.append((f"Votre position {sub}".strip(), geo_coords))
+    options.append((f"Votre voiture ({VEHICLE_LOCATION_LABEL})", VEHICLE_LOCATION_COORDS))
+    if query and len(query.strip()) >= 2:
+        options.extend(photon_search(query))
+    return options
 
 
 def render_input_view() -> None:
@@ -504,11 +519,9 @@ def render_input_view() -> None:
     _render_header()
 
     with st.expander("Mon trajet", expanded=True):
-        # Silent auto-geolocation. get_geolocation() is asynchronous: the first
-        # render returns None while the browser prompt is up. Once the user
-        # grants permission, the JS resolves and Streamlit reruns with the
-        # coords. We keep calling until we have a result (the component caches
-        # internally so no re-prompt).
+        # Silent auto-geolocation. get_geolocation() is asynchronous: first
+        # render returns None while the browser prompt is up; once the user
+        # grants permission, the JS resolves and Streamlit reruns.
         if "geoloc_coords" not in st.session_state:
             loc = get_geolocation()
             if loc and loc.get("coords"):
@@ -518,24 +531,20 @@ def render_input_view() -> None:
                 st.session_state.geoloc_label = _reverse_geocode(lat, lng)
 
         st.caption("Départ")
-        # Show the detected address in a clean input-style box (no icon, no label).
-        geoloc_label = st.session_state.get("geoloc_label")
-        if geoloc_label:
-            st.markdown(
-                f'<div style="background:#0B111C;border:1px solid #2A3344;'
-                f'border-radius:8px;padding:0.7rem 0.9rem;color:#FFFFFF;'
-                f'font-size:0.95rem;margin-bottom:0.5rem;">{geoloc_label}</div>',
-                unsafe_allow_html=True,
-            )
-        # Override searchbox: if user picks a different address, it wins.
-        override = st_searchbox(
-            photon_search,
+        # Google-Maps-like: searchbox with two quick picks on focus, plus
+        # address autocomplete as the user types. Defaults to GPS position
+        # (or to the vehicle if no GPS yet).
+        default_origin = (
+            st.session_state.get("geoloc_coords") or VEHICLE_LOCATION_COORDS
+        )
+        origin_choice = st_searchbox(
+            _search_origin,
             key="origin",
-            placeholder=("Changer pour une autre adresse" if geoloc_label
-                         else "Adresse de départ"),
+            placeholder="Choisir un point de départ",
+            default=default_origin,
             style_overrides=SEARCHBOX_STYLE,
         )
-        origin = override if override else st.session_state.get("geoloc_coords")
+        origin = origin_choice or default_origin
 
         st.caption("Arrivée")
         destination = st_searchbox(
