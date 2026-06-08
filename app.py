@@ -422,6 +422,30 @@ st.markdown(
         color: #5FFFA7 !important;
         border-bottom-color: #5FFFA7 !important;
     }
+
+    /* Borderless "⋯" button used next to the départ field. */
+    .st-key-origin_more button {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        color: #9AA3B2 !important;
+        font-size: 1.6rem !important;
+        line-height: 1 !important;
+        padding: 0 !important;
+        min-height: 0 !important;
+    }
+    .st-key-origin_more button:hover,
+    .st-key-origin_more button:focus {
+        color: #5FFFA7 !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+    /* Cartouche-button (gps / car) — fill the column, left-aligned text. */
+    .st-key-origin_box button {
+        text-align: left !important;
+        justify-content: flex-start !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -585,11 +609,11 @@ def render_input_view() -> None:
 
         mode = st.session_state.origin_mode
 
-        if mode == "type":
-            # Type mode: searchbox on the left + chevron on the right to
-            # reopen the source dialog (same visual logic as the cartouche).
-            col_input, col_chev = st.columns([10, 1], vertical_alignment="bottom")
-            with col_input:
+        # Same layout in all 3 modes: main column on the left + a borderless
+        # "⋯" button on the right that reopens the source dialog.
+        col_main, col_more = st.columns([11, 1], vertical_alignment="center")
+        with col_main:
+            if mode == "type":
                 typed = st_searchbox(
                     photon_search,
                     key="origin_typed",
@@ -599,22 +623,22 @@ def render_input_view() -> None:
                 if typed:
                     st.session_state.typed_origin_coords = typed
                 origin = st.session_state.get("typed_origin_coords")
-            with col_chev:
-                if st.button("▾", key="origin_chevron",
-                             use_container_width=True,
-                             help="Changer la source du départ"):
+            else:
+                if mode == "gps":
+                    geo = st.session_state.get("geoloc_label", "Détection en cours…")
+                    display = f"📍 {geo}"
+                    origin = st.session_state.get("geoloc_coords") or VEHICLE_LOCATION_COORDS
+                else:  # car
+                    display = f"🚗 {VEHICLE_LOCATION_LABEL}"
+                    origin = VEHICLE_LOCATION_COORDS
+                # Cartouche-button (no chevron — the ⋯ is outside the box).
+                # Also clickable as a generous tap target on mobile.
+                if st.button(display, key="origin_box",
+                             use_container_width=True):
                     _origin_dialog()
-        else:
-            # gps / car: cartouche-button showing the address + chevron.
-            if mode == "gps":
-                geo = st.session_state.get("geoloc_label", "Détection en cours…")
-                display = f"📍 {geo}"
-                origin = st.session_state.get("geoloc_coords") or VEHICLE_LOCATION_COORDS
-            else:  # car
-                display = f"🚗 {VEHICLE_LOCATION_LABEL}"
-                origin = VEHICLE_LOCATION_COORDS
-            if st.button(f"{display}  ▾", key="origin_btn",
-                         use_container_width=True):
+        with col_more:
+            if st.button("⋯", key="origin_more",
+                         help="Changer la source du départ"):
                 _origin_dialog()
 
         # ARRIVÉE = standard photon searchbox.
