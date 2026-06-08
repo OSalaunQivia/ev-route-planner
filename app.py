@@ -530,74 +530,68 @@ def render_input_view() -> None:
                 st.session_state.geoloc_coords = f"{lat:.6f},{lng:.6f}"
                 st.session_state.geoloc_label = _reverse_geocode(lat, lng)
 
-        # Initial selection: GPS if available, otherwise vehicle.
+        # Initial mode: GPS if available, else vehicle.
         if "origin_mode" not in st.session_state:
             st.session_state.origin_mode = (
                 "gps" if "geoloc_coords" in st.session_state else "car"
             )
 
-        # Resolve the active (label, coords) based on current mode.
-        if st.session_state.origin_mode == "gps":
-            geo_label = st.session_state.get("geoloc_label", "détection…")
-            origin_display = f"Votre position ({geo_label})"
-            origin = st.session_state.get("geoloc_coords") or VEHICLE_LOCATION_COORDS
-        elif st.session_state.origin_mode == "car":
-            origin_display = f"Votre voiture ({VEHICLE_LOCATION_LABEL})"
-            origin = VEHICLE_LOCATION_COORDS
-        else:  # "typed"
-            origin_display = st.session_state.get(
-                "typed_origin_label", "Adresse personnalisée",
-            )
-            origin = st.session_state.get("typed_origin_coords")
+        mode = st.session_state.origin_mode
 
-        st.caption("Départ")
-        # Always-visible quick picks. Selected one is highlighted in mint.
-        def _pill(label: str, active: bool) -> str:
-            border = "#5FFFA7" if active else "#2A3344"
-            color = "#5FFFA7" if active else "#FFFFFF"
-            return (
-                f'<div style="background:#0B111C;border:1px solid {border};'
-                f'border-radius:8px;padding:0.6rem 0.8rem;color:{color};'
-                f'font-size:0.9rem;text-align:center;">{label}</div>'
-            )
+        # === DÉPART cartouche (single row: display + ⋮ menu) ===
+        col_main, col_menu = st.columns([6, 1])
 
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("📍 Votre position", key="pick_gps",
-                         use_container_width=True):
-                st.session_state.origin_mode = "gps"
-                st.rerun()
-            geo_short = st.session_state.get("geoloc_label", "détection en cours…")
-            st.caption(geo_short)
-        with c2:
-            if st.button("🚗 Votre voiture", key="pick_car",
-                         use_container_width=True):
-                st.session_state.origin_mode = "car"
-                st.rerun()
-            st.caption(VEHICLE_LOCATION_LABEL)
+        with col_main:
+            if mode == "type":
+                typed = st_searchbox(
+                    photon_search,
+                    key="origin_typed",
+                    placeholder="Départ",
+                    style_overrides=SEARCHBOX_STYLE,
+                )
+                if typed:
+                    st.session_state.typed_origin_coords = typed
+                origin = st.session_state.get("typed_origin_coords")
+            elif mode == "gps":
+                geo_label = st.session_state.get("geoloc_label", "détection…")
+                st.markdown(
+                    f'<div style="background:#0B111C;border:1px solid #2A3344;'
+                    f'border-radius:8px;padding:0.7rem 0.9rem;color:#FFFFFF;'
+                    f'font-size:0.95rem;height:44px;display:flex;align-items:center;">'
+                    f'<span style="margin-right:0.5rem;">📍</span>{geo_label}</div>',
+                    unsafe_allow_html=True,
+                )
+                origin = st.session_state.get("geoloc_coords") or VEHICLE_LOCATION_COORDS
+            else:  # car
+                st.markdown(
+                    f'<div style="background:#0B111C;border:1px solid #2A3344;'
+                    f'border-radius:8px;padding:0.7rem 0.9rem;color:#FFFFFF;'
+                    f'font-size:0.95rem;height:44px;display:flex;align-items:center;">'
+                    f'<span style="margin-right:0.5rem;">🚗</span>{VEHICLE_LOCATION_LABEL}</div>',
+                    unsafe_allow_html=True,
+                )
+                origin = VEHICLE_LOCATION_COORDS
 
-        # Free typing — overrides the quick picks when used.
-        typed = st_searchbox(
-            photon_search,
-            key="origin_typed",
-            placeholder="Ou taper une adresse",
-            style_overrides=SEARCHBOX_STYLE,
-        )
-        if typed:
-            # We received "lat,lng" string from photon_search. Build a label
-            # for display from the searchbox's last selected option.
-            st.session_state.typed_origin_coords = typed
-            # Photon result's label isn't directly returned by the searchbox,
-            # so we keep a generic display label. The actual coords are correct.
-            st.session_state.typed_origin_label = "Adresse personnalisée"
-            st.session_state.origin_mode = "typed"
-            origin = typed
+        with col_menu:
+            with st.popover("⋮", use_container_width=True):
+                if st.button("Départ (saisir)", key="opt_type",
+                             use_container_width=True):
+                    st.session_state.origin_mode = "type"
+                    st.rerun()
+                if st.button("Votre position", key="opt_gps",
+                             use_container_width=True):
+                    st.session_state.origin_mode = "gps"
+                    st.rerun()
+                if st.button("Votre voiture", key="opt_car",
+                             use_container_width=True):
+                    st.session_state.origin_mode = "car"
+                    st.rerun()
 
-        st.caption("Arrivée")
+        # === ARRIVÉE cartouche (just a searchbox) ===
         destination = st_searchbox(
             photon_search,
             key="destination",
-            placeholder="Arrivée — ville, adresse, code postal",
+            placeholder="Arrivée",
             style_overrides=SEARCHBOX_STYLE,
         )
 
