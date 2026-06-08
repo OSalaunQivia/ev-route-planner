@@ -490,6 +490,18 @@ st.markdown(
         transform: translateY(0);
     }
 
+    /* 3 lignes d'info véhicule, directement sur le fond noir (pas de carte). */
+    .info-line {
+        color: #FFFFFF;
+        font-size: 1rem;
+        line-height: 1.7;
+        padding: 0.1rem 0;
+    }
+    .info-line .info-hl {
+        color: #5FFFA7;
+        font-weight: 700;
+    }
+
     /* Petit bouton "?" discret (popover) à côté des cartes d'info. */
     [data-testid="stPopover"] button {
         background: transparent !important;
@@ -783,18 +795,20 @@ def render_input_view() -> None:
     soc = st.session_state.get("soc_slider", VEHICLE_CURRENT_SOC)
     driving_style = st.session_state.get("style_radio", VEHICLE_DEFAULT_STYLE)
 
-    # CHARGE — info card + small "?" popover that explains + lets you edit.
+    # Three-line info block, no card background. Lines 2 and 3 have a "?"
+    # popover to the right for editing.
+    st.markdown(
+        f'<div class="info-line">•&nbsp; Votre véhicule est une '
+        f'<b class="info-hl">{VEHICLE_NAME}</b>.</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Charge line + ? popover.
     soc_col_text, soc_col_help = st.columns([10, 1], vertical_alignment="center")
     with soc_col_text:
         st.markdown(
-            f"""
-            <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
-                        padding:1rem 1.1rem;margin:0.8rem 0;color:#FFFFFF;line-height:1.65;
-                        font-size:0.95rem;">
-              Votre véhicule est une <b style="color:#5FFFA7;">{VEHICLE_NAME}</b>,
-              actuellement chargé à <b style="color:#5FFFA7;">{soc} %</b>.
-            </div>
-            """,
+            f'<div class="info-line">•&nbsp; Chargé à '
+            f'<b class="info-hl">{soc} %</b>.</div>',
             unsafe_allow_html=True,
         )
     with soc_col_help:
@@ -805,17 +819,12 @@ def render_input_view() -> None:
             )
             st.slider("Charge (%)", 0, 100, VEHICLE_CURRENT_SOC, key="soc_slider")
 
-    # STYLE — same pattern.
+    # Style line + ? popover.
     style_col_text, style_col_help = st.columns([10, 1], vertical_alignment="center")
     with style_col_text:
         st.markdown(
-            f"""
-            <div style="background:#0B111C;border:1px solid #1A2030;border-radius:10px;
-                        padding:1rem 1.1rem;margin:0.8rem 0;color:#FFFFFF;line-height:1.65;
-                        font-size:0.95rem;">
-              Votre type de conduite est <b style="color:#5FFFA7;">{driving_style}</b>.
-            </div>
-            """,
+            f'<div class="info-line">•&nbsp; Type de conduite : '
+            f'<b class="info-hl">{driving_style}</b>.</div>',
             unsafe_allow_html=True,
         )
     with style_col_help:
