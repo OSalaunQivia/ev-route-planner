@@ -812,7 +812,8 @@ def render_input_view() -> None:
             unsafe_allow_html=True,
         )
     with soc_col_help:
-        with st.popover("?", use_container_width=False):
+        with st.popover("?", help="Modifier la charge",
+                        use_container_width=False):
             st.caption(
                 "Cette info provient de votre voiture via l'option "
                 "**véhicule connecté**. Vous pouvez la modifier pour ce trajet :"
@@ -828,7 +829,8 @@ def render_input_view() -> None:
             unsafe_allow_html=True,
         )
     with style_col_help:
-        with st.popover("?", use_container_width=False):
+        with st.popover("?", help="Modifier le style de conduite",
+                        use_container_width=False):
             st.caption(
                 "Récupéré via l'option **véhicule connecté**. "
                 "Vous pouvez choisir un autre style pour ce trajet :"
@@ -844,7 +846,7 @@ def render_input_view() -> None:
     st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
     _, btn_col, _ = st.columns([1, 2, 1])
     with btn_col:
-        if st.button("On y va !", key="go_button", type="primary",
+        if st.button("C'est parti !", key="go_button", type="primary",
                      use_container_width=True):
             st.session_state.inputs = {
                 "origin": origin,
