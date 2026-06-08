@@ -437,7 +437,7 @@ st.markdown(
         color: #9AA3B2 !important;
         font-size: 1.6rem !important;
         line-height: 1 !important;
-        padding: 0 !important;
+        padding: 0.6rem 0 !important;  /* vertically aligns ⋯ with input text */
         min-height: 0 !important;
     }
     [class*="st-key-origin_more"] button:hover,
@@ -449,10 +449,15 @@ st.markdown(
         border: 0 !important;
         box-shadow: none !important;
     }
-    /* Cartouche-button (gps / car) — fill the column, left-aligned text. */
-    [class*="st-key-origin_box"] button {
+    /* Cartouche-button (gps / car) — fill the column, left-aligned text.
+       Streamlit nests button > div > div > p, so we force alignment at every level. */
+    [class*="st-key-origin_box"] button,
+    [class*="st-key-origin_box"] button > div,
+    [class*="st-key-origin_box"] button > div > div,
+    [class*="st-key-origin_box"] button p {
         text-align: left !important;
         justify-content: flex-start !important;
+        width: 100% !important;
     }
     </style>
     """,
@@ -635,7 +640,9 @@ def render_input_view() -> None:
     mode = st.session_state.origin_mode
 
     # DÉPART — left column (box) + right column (borderless ⋯).
-    col_main, col_more = st.columns([11, 1], vertical_alignment="center")
+    # vertical_alignment="top" so the ⋯ stays anchored to the input row even
+    # when the searchbox dropdown expands the left column's height.
+    col_main, col_more = st.columns([10, 1.2], vertical_alignment="top")
     with col_main:
         if mode == "type":
             typed = st_searchbox(
@@ -664,8 +671,8 @@ def render_input_view() -> None:
                      help="Changer la source du départ"):
             _origin_dialog()
 
-    # ARRIVÉE — same [11, 1] split for visual width parity; right column empty.
-    col_arr, col_arr_pad = st.columns([11, 1], vertical_alignment="center")
+    # ARRIVÉE — same split for visual width parity with départ; right col empty.
+    col_arr, col_arr_pad = st.columns([10, 1.2], vertical_alignment="top")
     with col_arr:
         destination = st_searchbox(
             photon_search,
