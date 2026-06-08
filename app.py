@@ -642,7 +642,7 @@ def render_input_view() -> None:
     # DÉPART — left column (box) + right column (borderless ⋯).
     # vertical_alignment="top" so the ⋯ stays anchored to the input row even
     # when the searchbox dropdown expands the left column's height.
-    col_main, col_more = st.columns([8, 1.5], vertical_alignment="top")
+    col_main, col_more = st.columns([5, 1.5], vertical_alignment="top")
     with col_main:
         if mode == "type":
             typed = st_searchbox(
@@ -672,7 +672,7 @@ def render_input_view() -> None:
             _origin_dialog()
 
     # ARRIVÉE — same split for visual width parity with départ; right col empty.
-    col_arr, col_arr_pad = st.columns([8, 1.5], vertical_alignment="top")
+    col_arr, col_arr_pad = st.columns([5, 1.5], vertical_alignment="top")
     with col_arr:
         destination = st_searchbox(
             photon_search,
