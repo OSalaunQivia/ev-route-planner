@@ -541,10 +541,10 @@ VEHICLE_LOCATION_LABEL = "52 rue de Picpus, 75012 Paris"
 VEHICLE_LOCATION_COORDS = "48.846800,2.394500"
 
 
-@st.dialog("Choisir le départ", width="medium")
+@st.dialog("Choisir le départ", width="small")
 def _origin_dialog() -> None:
-    """Modal triggered by tapping the départ cartouche.
-    Lists the quick picks + an autocomplete to type a custom address."""
+    """Modal with the 3 options. Picking 'Saisir une adresse' switches the
+    main view into searchbox mode; the typing happens outside the dialog."""
     if st.session_state.get("geoloc_coords"):
         geo = st.session_state.get("geoloc_label", "…")
         if st.button(f"📍 Votre position ({geo})", key="dlg_gps",
@@ -555,16 +555,8 @@ def _origin_dialog() -> None:
                  key="dlg_car", use_container_width=True):
         st.session_state.origin_mode = "car"
         st.rerun()
-    st.markdown("**Ou saisir une adresse**")
-    typed = st_searchbox(
-        photon_search,
-        key="origin_typed_search",
-        placeholder="Adresse",
-        style_overrides=SEARCHBOX_STYLE,
-    )
-    if typed:
-        st.session_state.typed_origin_coords = typed
-        st.session_state.typed_origin_label = "Adresse personnalisée"
+    if st.button("✏️ Saisir une adresse", key="dlg_type",
+                 use_container_width=True):
         st.session_state.origin_mode = "type"
         st.rerun()
 
@@ -591,24 +583,35 @@ def render_input_view() -> None:
                 "gps" if "geoloc_coords" in st.session_state else "car"
             )
 
-        # Compute the current display label + coords from the active mode.
         mode = st.session_state.origin_mode
-        if mode == "gps":
-            geo = st.session_state.get("geoloc_label", "Détection en cours…")
-            display = f"📍 {geo}"
-            origin = st.session_state.get("geoloc_coords") or VEHICLE_LOCATION_COORDS
-        elif mode == "car":
-            display = f"🚗 {VEHICLE_LOCATION_LABEL}"
-            origin = VEHICLE_LOCATION_COORDS
-        else:  # type
-            label = st.session_state.get("typed_origin_label", "Adresse personnalisée")
-            display = f"📍 {label}"
-            origin = st.session_state.get("typed_origin_coords")
 
-        # DÉPART = single button styled as a cartouche. Click opens the dialog.
-        if st.button(f"{display}  ▾", key="origin_btn",
-                     use_container_width=True):
-            _origin_dialog()
+        if mode == "type":
+            # Type mode: show the searchbox on the main screen.
+            typed = st_searchbox(
+                photon_search,
+                key="origin_typed",
+                placeholder="Saisir une adresse de départ",
+                style_overrides=SEARCHBOX_STYLE,
+            )
+            if typed:
+                st.session_state.typed_origin_coords = typed
+            origin = st.session_state.get("typed_origin_coords")
+            # Small link to reopen the dialog (switch back to GPS / voiture).
+            if st.button("Changer la source", key="origin_change_back",
+                         use_container_width=False):
+                _origin_dialog()
+        else:
+            # gps / car: cartouche-button showing the address + chevron.
+            if mode == "gps":
+                geo = st.session_state.get("geoloc_label", "Détection en cours…")
+                display = f"📍 {geo}"
+                origin = st.session_state.get("geoloc_coords") or VEHICLE_LOCATION_COORDS
+            else:  # car
+                display = f"🚗 {VEHICLE_LOCATION_LABEL}"
+                origin = VEHICLE_LOCATION_COORDS
+            if st.button(f"{display}  ▾", key="origin_btn",
+                         use_container_width=True):
+                _origin_dialog()
 
         # ARRIVÉE = standard photon searchbox.
         destination = st_searchbox(
