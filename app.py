@@ -266,6 +266,16 @@ st.markdown(
     header[data-testid="stHeader"] { display: none !important; }
     div[data-testid="stToolbar"] { display: none !important; }
 
+    /* Keep horizontal blocks (st.columns) horizontal even on mobile — needed
+       for the "address + ⋮ menu" row to stay inline. */
+    [data-testid="stHorizontalBlock"] {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+    }
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+        min-width: 0 !important;
+    }
+
     /* Tighten the top padding so content starts near the top */
     .main .block-container,
     section[data-testid="stMain"] > div:first-child,
@@ -488,6 +498,9 @@ SEARCHBOX_STYLE = {
         "singleValue": {"color": "#FFFFFF"},
         "placeholder": {"color": "#9AA3B2"},
         "input": {"color": "#FFFFFF"},
+        # Hide the dropdown chevron and its vertical separator.
+        "dropdownIndicator": {"display": "none"},
+        "indicatorSeparator": {"display": "none"},
     },
 }
 
@@ -539,7 +552,7 @@ def render_input_view() -> None:
         mode = st.session_state.origin_mode
 
         # === DÉPART cartouche (single row: display + ⋮ menu) ===
-        col_main, col_menu = st.columns([6, 1])
+        col_main, col_menu = st.columns([8, 1], gap="small", vertical_alignment="center")
 
         with col_main:
             if mode == "type":
@@ -573,8 +586,8 @@ def render_input_view() -> None:
                 origin = VEHICLE_LOCATION_COORDS
 
         with col_menu:
-            with st.popover("⋮", use_container_width=True):
-                if st.button("Départ (saisir)", key="opt_type",
+            with st.popover("⋮"):
+                if st.button("Saisir adresse", key="opt_type",
                              use_container_width=True):
                     st.session_state.origin_mode = "type"
                     st.rerun()
