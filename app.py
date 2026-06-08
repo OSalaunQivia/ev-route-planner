@@ -439,6 +439,14 @@ st.markdown(
         line-height: 1 !important;
         padding: 0.85rem 0 !important;  /* vertically aligns ⋯ with input text */
         min-height: 0 !important;
+        margin-left: auto !important;  /* push to the right of its column */
+        display: block !important;
+    }
+    /* Push the whole st.button wrapper to the right edge of its column. */
+    [class*="st-key-origin_more"] [data-testid="stButton"] {
+        text-align: right !important;
+        display: flex !important;
+        justify-content: flex-end !important;
     }
     [class*="st-key-origin_more"] button:hover,
     [class*="st-key-origin_more"] button:focus,
@@ -689,13 +697,17 @@ def render_input_view() -> None:
                      help="Changer la source du départ"):
             _origin_dialog()
 
-    # ARRIVÉE — searchbox alone (no ⋯ on this row).
-    destination = st_searchbox(
-        photon_search,
-        key="destination",
-        placeholder="Arrivée",
-        style_overrides=SEARCHBOX_STYLE,
-    )
+    # ARRIVÉE — same column structure as départ so the box width matches.
+    col_arr, col_arr_pad = st.columns([5, 1.5], vertical_alignment="top")
+    with col_arr:
+        destination = st_searchbox(
+            photon_search,
+            key="destination",
+            placeholder="Arrivée",
+            style_overrides=SEARCHBOX_STYLE,
+        )
+    with col_arr_pad:
+        st.empty()
 
     st.markdown(
         f"""
