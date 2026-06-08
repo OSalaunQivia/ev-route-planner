@@ -564,11 +564,12 @@ st.markdown(
         column-gap: 0.85rem !important;
     }
 
-    /* RESULT VIEW — tight vertical rhythm: less air between title, toggles,
-       metrics. We compress the wrappers around the toggles row. */
+    /* RESULT VIEW — toggles glued directly under the title. We use a negative
+       top margin on the horizontal block so it visually overlaps the natural
+       gap Streamlit leaves below the preceding markdown. */
     [data-testid="stHorizontalBlock"]:has([class*="st-key-mode_eco_toggle"]) {
-        margin-top: 0.3rem !important;
-        margin-bottom: 0.3rem !important;
+        margin-top: -0.6rem !important;
+        margin-bottom: 0.15rem !important;
         padding-top: 0 !important;
         padding-bottom: 0 !important;
     }
@@ -580,6 +581,14 @@ st.markdown(
     [class*="st-key-mode_eco_toggle"] [data-testid="stElementContainer"],
     [class*="st-key-toll_notoll_toggle"] [data-testid="stElementContainer"] {
         margin: 0 !important;
+        padding: 0 !important;
+    }
+    /* Also kill the bottom padding of the element-container holding the title
+       markdown (the one right before the toggles), so there's nothing pushing
+       the toggles down. */
+    [data-testid="stElementContainer"]:has(> [data-testid="stMarkdownContainer"] > h2) {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
     }
 
     </style>
