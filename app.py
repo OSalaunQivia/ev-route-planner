@@ -408,17 +408,13 @@ st.markdown(
 # ============================================================================
 
 def _render_header() -> None:
-    col_logo, col_title = st.columns([1, 5])
-    with col_logo:
-        st.image("assets/logo-qivia.png", width=70)
-    with col_title:
-        st.markdown(
-            '<h1 style="margin-top:0.4rem;font-size:1.6rem;">'
-            'Bonjour <span class="qivia-highlight">Arthur</span>,<br>'
-            'où souhaitez-vous aller aujourd\'hui ?'
-            '</h1>',
-            unsafe_allow_html=True,
-        )
+    st.image("assets/logo-qivia.png", width=80)
+    st.markdown(
+        '<h1 style="margin:0.6rem 0 0 0;font-size:1.6rem;line-height:1.2;">'
+        'Bonjour <span class="qivia-highlight">Arthur</span>, où va-t-on ?'
+        '</h1>',
+        unsafe_allow_html=True,
+    )
     st.markdown('<div class="qivia-accent"></div>', unsafe_allow_html=True)
 
 
