@@ -812,13 +812,14 @@ def render_input_view() -> None:
             unsafe_allow_html=True,
         )
     with soc_col_help:
-        with st.popover("?", help="Modifier la charge",
-                        use_container_width=False):
-            st.caption(
-                "Cette info provient de votre voiture via l'option "
-                "**véhicule connecté**. Vous pouvez la modifier pour ce trajet :"
-            )
-            st.slider("Charge (%)", 0, 100, VEHICLE_CURRENT_SOC, key="soc_slider")
+        with st.container(key="soc_help_wrap"):
+            with st.popover("?", help="Modifier la charge",
+                            use_container_width=False):
+                st.caption(
+                    "Cette info provient de votre voiture via l'option "
+                    "**véhicule connecté**. Vous pouvez la modifier pour ce trajet :"
+                )
+                st.slider("Charge (%)", 0, 100, VEHICLE_CURRENT_SOC, key="soc_slider")
 
     # Style line + ? popover.
     style_col_text, style_col_help = st.columns([10, 1], vertical_alignment="center")
@@ -829,18 +830,24 @@ def render_input_view() -> None:
             unsafe_allow_html=True,
         )
     with style_col_help:
-        with st.popover("?", help="Modifier le style de conduite",
-                        use_container_width=False):
-            st.caption(
-                "Récupéré via l'option **véhicule connecté**. "
-                "Vous pouvez choisir un autre style pour ce trajet :"
-            )
-            style_options = list(DRIVING_STYLES.keys())
-            default_idx = style_options.index(VEHICLE_DEFAULT_STYLE) if VEHICLE_DEFAULT_STYLE in style_options else 1
-            st.radio(
-                "Conduite", style_options, index=default_idx,
-                horizontal=True, key="style_radio",
-            )
+        with st.container(key="style_help_wrap"):
+            with st.popover("?", help="Modifier le style de conduite",
+                            use_container_width=False):
+                st.markdown(
+                    "**Type de conduite**  \n"
+                    '<span style="color:#9AA3B2;font-size:0.85rem;">'
+                    "Récupéré via l'option <b>véhicule connecté</b>. "
+                    "Vous pouvez choisir un autre style pour ce trajet."
+                    "</span>",
+                    unsafe_allow_html=True,
+                )
+                style_options = list(DRIVING_STYLES.keys())
+                default_idx = style_options.index(VEHICLE_DEFAULT_STYLE) if VEHICLE_DEFAULT_STYLE in style_options else 1
+                st.radio(
+                    "Conduite", style_options, index=default_idx,
+                    horizontal=True, key="style_radio",
+                    label_visibility="collapsed",
+                )
 
     # "On y va !" — centered button with neon glow.
     st.markdown("<div style='height:0.6rem'></div>", unsafe_allow_html=True)
