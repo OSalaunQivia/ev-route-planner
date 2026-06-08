@@ -459,6 +459,24 @@ st.markdown(
         justify-content: flex-start !important;
         width: 100% !important;
     }
+
+    /* Force the départ / arrivée columns to respect a 75/25 ratio — the
+       widgets inside (searchbox, button) were ignoring Streamlit's column
+       sizing and expanding past their column. We target the parent column
+       that contains a specific widget via :has(). */
+    [data-testid="stColumn"]:has([class*="st-key-origin_box"]),
+    [data-testid="stColumn"]:has([class*="st-key-origin_typed"]),
+    [data-testid="stColumn"]:has([class*="st-key-destination"]) {
+        flex: 0 0 75% !important;
+        max-width: 75% !important;
+        width: 75% !important;
+    }
+    [data-testid="stColumn"]:has([class*="st-key-origin_more"]) {
+        flex: 0 0 22% !important;
+        max-width: 22% !important;
+        width: 22% !important;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
