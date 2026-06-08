@@ -568,8 +568,8 @@ st.markdown(
        top margin on the horizontal block so it visually overlaps the natural
        gap Streamlit leaves below the preceding markdown. */
     [data-testid="stHorizontalBlock"]:has([class*="st-key-mode_eco_toggle"]) {
-        margin-top: -0.6rem !important;
-        margin-bottom: 0.15rem !important;
+        margin-top: -1.8rem !important;
+        margin-bottom: 0.05rem !important;
         padding-top: 0 !important;
         padding-bottom: 0 !important;
     }
