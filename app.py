@@ -668,7 +668,7 @@ def render_input_view() -> None:
     # for type); col_more holds the borderless ⋯ button. The cartouche being
     # a plain <div> (not a button) means it doesn't have Streamlit's intrinsic
     # min-width, so the column ratio is actually respected.
-    col_main, col_more = st.columns([7, 1], vertical_alignment="top", gap="medium")
+    col_main, col_more = st.columns([6, 1], vertical_alignment="top", gap="medium")
     with col_main:
         if mode == "type":
             typed = st_searchbox(
@@ -699,7 +699,7 @@ def render_input_view() -> None:
             _origin_dialog()
 
     # ARRIVÉE — same column structure as départ so the box width matches.
-    col_arr, col_arr_pad = st.columns([7, 1], vertical_alignment="top", gap="medium")
+    col_arr, col_arr_pad = st.columns([6, 1], vertical_alignment="top", gap="medium")
     with col_arr:
         destination = st_searchbox(
             photon_search,
