@@ -492,8 +492,8 @@ st.markdown(
     [data-testid="horizontalBlock"]:has([class*="st-key-origin_more"]),
     [data-testid="horizontalBlock"]:has([class*="st-key-destination"]),
     div:has(> [data-testid="stColumn"] > div > [class*="st-key-origin_more"]) {
-        gap: 2.5rem !important;
-        column-gap: 2.5rem !important;
+        gap: 0.85rem !important;
+        column-gap: 0.85rem !important;
     }
 
     </style>
