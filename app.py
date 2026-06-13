@@ -1262,26 +1262,28 @@ def _compute_route_base(
 
 
 def _compute_one_plan(base: dict, soc, model, mode: str, fast_plan=None,
-                      min_soc_pct: float = 10.0) -> dict:
+                      arrival_soc_pct: float = 10.0) -> dict:
     """Phase 2 (fast): plan_trip + TomTom availability + cost for a single mode.
-    `min_soc_pct` = charge minimale visée à l'arrivée (et plancher de SoC)."""
+    `arrival_soc_pct` = charge VISÉE à l'arrivée (le planificateur ajoute des
+    arrêts jusqu'à arriver avec au moins ce niveau). Le plancher de sécurité
+    en cours de route (`min_soc_pct`) reste à sa valeur par défaut."""
     result = base["result"]
     df = base["df"]
     tomtom_key = get_secret("TOMTOM_API_KEY")
 
     if mode == "fast":
         plan = plan_trip(result, df, model, initial_soc_pct=soc, mode="fast",
-                         min_soc_pct=min_soc_pct)
+                         min_arrival_destination_pct=arrival_soc_pct)
     else:
         fast_for_budget = fast_plan or plan_trip(
             result, df, model, initial_soc_pct=soc, mode="fast",
-            min_soc_pct=min_soc_pct)
+            min_arrival_destination_pct=arrival_soc_pct)
         budget = fast_for_budget.total_time_s * 1.20
         plan = plan_trip(result, df, model, initial_soc_pct=soc, mode="eco",
-                         price_weight=40.0, min_soc_pct=min_soc_pct)
+                         price_weight=40.0, min_arrival_destination_pct=arrival_soc_pct)
         for pw in (400.0, 250.0, 150.0, 80.0, 40.0):
             cand = plan_trip(result, df, model, initial_soc_pct=soc, mode="eco",
-                             price_weight=pw, min_soc_pct=min_soc_pct)
+                             price_weight=pw, min_arrival_destination_pct=arrival_soc_pct)
             if cand.feasible and cand.total_time_s <= budget:
                 plan = cand
                 break
@@ -1312,15 +1314,17 @@ def _compute_one_plan(base: dict, soc, model, mode: str, fast_plan=None,
 
 def _compute_variant_full(
     origin_coords, destination_coords, soc, model, df_all, avoid_tolls,
-    min_soc_pct: float = 10.0,
+    arrival_soc_pct: float = 10.0,
 ) -> dict:
     """Compute the FULL variant (both modes) — used by background threads."""
     base = _compute_route_base(
         origin_coords, destination_coords, soc, model, df_all, avoid_tolls,
     )
-    fast_data = _compute_one_plan(base, soc, model, "fast", min_soc_pct=min_soc_pct)
+    fast_data = _compute_one_plan(base, soc, model, "fast",
+                                  arrival_soc_pct=arrival_soc_pct)
     eco_data = _compute_one_plan(base, soc, model, "eco",
-                                 fast_plan=fast_data["plan"], min_soc_pct=min_soc_pct)
+                                 fast_plan=fast_data["plan"],
+                                 arrival_soc_pct=arrival_soc_pct)
     return {
         "result": base["result"],
         "meta": base["meta"],
@@ -1354,7 +1358,7 @@ def compute_pipeline(inputs: dict) -> dict:
         origin_coords, destination_coords, soc, model, df_all, avoid_tolls=False,
     )
     fast_toll = _compute_one_plan(base_toll, soc, model, "fast",
-                                  min_soc_pct=arrival_soc)
+                                  arrival_soc_pct=arrival_soc)
 
     return {
         "origin": origin_coords,
