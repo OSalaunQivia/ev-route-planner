@@ -1728,6 +1728,12 @@ def render_result_view() -> None:
     dest_lat, dest_lng = data["destination"]
     dest_label = _reverse_geocode(dest_lat, dest_lng)
     origin_label = data.get("origin_label")
+    # Repli : si le searchbox n'a pas capturé le libellé (mode saisie),
+    # on reverse-géocode l'adresse — Google la re-géocode bien (c'est une
+    # vraie adresse FR) et ça évite « Repère placé ».
+    if not origin_label:
+        o_lat, o_lng = data["origin"]
+        origin_label = _reverse_geocode(o_lat, o_lng)
     stop_pids = None
     dest_pid = None
     origin_pid = None
@@ -1737,9 +1743,8 @@ def render_result_view() -> None:
             for s, lbl in zip(plan.stops, stop_labels)
         ]
         dest_pid = _gmaps_place_id(dest_lat, dest_lng, dest_label)
-        if origin_label:
-            o_lat, o_lng = data["origin"]
-            origin_pid = _gmaps_place_id(o_lat, o_lng, origin_label)
+        o_lat, o_lng = data["origin"]
+        origin_pid = _gmaps_place_id(o_lat, o_lng, origin_label)
     nav_url = gmaps_nav_url(
         data["origin"], data["destination"], plan.stops,
         stop_place_ids=stop_pids, destination_place_id=dest_pid,
