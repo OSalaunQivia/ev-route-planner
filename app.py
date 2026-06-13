@@ -836,14 +836,19 @@ def render_input_view() -> None:
             if typed:
                 st.session_state.typed_origin_coords = typed
             origin = st.session_state.get("typed_origin_coords")
+            # Searchbox ne stocke que les coords (pas le libellé) → on laisse le
+            # popup carte reverse-géocoder le départ tapé.
+            origin_label = None
         else:
             if mode == "gps":
                 geo = st.session_state.get("geoloc_label", "Détection en cours…")
                 display = f"📍 {geo}"
                 origin = st.session_state.get("geoloc_coords") or VEHICLE_LOCATION_COORDS
+                origin_label = st.session_state.get("geoloc_label")
             else:  # car
                 display = f"🚗 {VEHICLE_LOCATION_LABEL}"
                 origin = VEHICLE_LOCATION_COORDS
+                origin_label = VEHICLE_LOCATION_LABEL
             # Pure HTML cartouche — width controlled by CSS, no min-width pitfall.
             st.markdown(
                 f'<div class="dep-cartouche">{display}</div>',
@@ -953,6 +958,7 @@ def render_input_view() -> None:
                      use_container_width=True):
             st.session_state.inputs = {
                 "origin": origin,
+                "origin_label": origin_label,
                 "destination": destination,
                 "soc": soc,
                 "driving_style": driving_style,
@@ -974,6 +980,7 @@ def render_trip_body(
     destination,
     meta: dict | None = None,
     key_suffix: str = "main",
+    origin_label: str | None = None,
 ) -> None:
     """Map + stops list only. Metrics + title are handled by the caller."""
     if not plan.feasible:
@@ -1029,10 +1036,13 @@ def render_trip_body(
     # Arrivée = SoC d'arrivée calculé par le planner.
     dep_soc = pts_full[0].soc_pct if pts_full else 0.0
     arr_soc = plan.arrival_soc_pct
+    # Départ : on privilégie le libellé connu (adresse véhicule / géoloc) ;
+    # sinon reverse-géocodage des coordonnées.
+    dep_place = origin_label or _reverse_geocode(origin[0], origin[1])
     folium.Marker(
         origin,
         popup=folium.Popup(
-            _endpoint_popup_html("Départ", _reverse_geocode(origin[0], origin[1]), dep_soc),
+            _endpoint_popup_html("Départ", dep_place, dep_soc),
             max_width=260,
         ),
         icon=folium.Icon(color="green"),
@@ -1402,6 +1412,7 @@ def compute_pipeline(inputs: dict) -> dict:
 
     return {
         "origin": origin_coords,
+        "origin_label": inputs.get("origin_label"),
         "destination": destination_coords,
         "soc": soc,
         "arrival_soc": arrival_soc,
@@ -1694,7 +1705,8 @@ def render_result_view() -> None:
         "toll_eur": toll_cost,
         "total_cost_eur": recharge_cost + toll_cost,
     }
-    render_trip_body(result, plan, data["origin"], data["destination"], meta, f"{mode_key}_{toll_key}")
+    render_trip_body(result, plan, data["origin"], data["destination"], meta, f"{mode_key}_{toll_key}",
+                     origin_label=data.get("origin_label"))
 
     # Big primary CTA after the map: launch Google Maps navigation with the
     # charging stops injected as waypoints (direct route if there's no stop).
