@@ -832,6 +832,8 @@ def render_input_view() -> None:
                 key="origin_typed",
                 placeholder="Saisir une adresse de départ",
                 style_overrides=SEARCHBOX_STYLE,
+                debounce=400,
+                rerun_on_update=False,
             )
             if typed:
                 st.session_state.typed_origin_coords = typed
@@ -867,6 +869,8 @@ def render_input_view() -> None:
             key="destination",
             placeholder="Arrivée",
             style_overrides=SEARCHBOX_STYLE,
+            debounce=400,
+            rerun_on_update=False,
         )
     with col_arr_pad:
         st.empty()
