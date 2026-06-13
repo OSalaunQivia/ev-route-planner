@@ -20,7 +20,7 @@ from streamlit_searchbox import st_searchbox
 
 from availability import fetch_availability
 from enrichment import enrich_route
-from navlink import find_place_id, gmaps_nav_url
+from navlink import find_place_id, gmaps_nav_url, waze_nav_url
 from pricing import estimate_price_per_kwh, estimate_stop_cost
 from providers import (
     DRIVING_STYLES,
@@ -1750,7 +1750,12 @@ def render_result_view() -> None:
         stop_labels=stop_labels, destination_label=dest_label,
         origin_place_id=origin_pid, origin_label=origin_label,
     )
-    st.link_button("On y va", nav_url, type="primary", use_container_width=True)
+    waze_url = waze_nav_url(data["destination"], plan.stops)
+    col_gmaps, col_waze = st.columns(2)
+    with col_gmaps:
+        st.link_button("🗺️ Google Maps", nav_url, type="primary", use_container_width=True)
+    with col_waze:
+        st.link_button("🟣 Waze", waze_url, type="secondary", use_container_width=True)
     # Keep a discreet way back to plan another trip.
     if st.button("↺ Calculer un autre trajet", key="back_btn_bottom",
                  use_container_width=True):

@@ -148,6 +148,29 @@ def gmaps_nav_url(
     return "https://www.google.com/maps/dir/?" + urlencode(params)
 
 
+def waze_nav_url(
+    destination: tuple[float, float],
+    stops: list[ChargingStop] | None = None,
+) -> str:
+    """Deeplink Waze — ouvre l'app Waze en navigation.
+
+    Waze ne supporte pas les waypoints : on navigue vers le PREMIER arrêt
+    de recharge (le plus urgent), ou vers la destination finale s'il n'y a
+    pas d'arrêt. L'utilisateur relancera la nav depuis Waze après chaque
+    étape (le plan Qivia lui indique les bornes suivantes).
+    """
+    if stops:
+        target = (stops[0].lat, stops[0].lng)
+    else:
+        target = destination
+    params = {
+        "ll": f"{target[0]:.6f},{target[1]:.6f}",
+        "navigate": "yes",
+        "zoom": "17",
+    }
+    return "https://waze.com/ul?" + urlencode(params)
+
+
 def qr_url(data: str, size: int = 240) -> str:
     """QR sans dépendance (API publique goqr.me). On scanne le QR affiché à
     l'écran de démo → le téléphone lance la nav Google Maps droit sur la borne
