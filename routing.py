@@ -41,6 +41,13 @@ MODE_PARAMS: dict[str, dict[str, float]] = {
     },
 }
 
+# Marge de sécurité (points de SoC) ajoutée à la charge visée à l'arrivée.
+# Le DERNIER arrêt ne recharge que le nécessaire pour arriver à
+# `min_arrival_destination_pct + ARRIVAL_MARGIN_PCT` (au lieu de remplir
+# jusqu'à la cible du mode). Petit coussin contre l'optimisme du modèle de
+# consommation. Mettre à 0 pour coller exactement à la demande.
+ARRIVAL_MARGIN_PCT = 3.0
+
 
 def _effective_kw(station_power: float, vehicle_max_dc: float, target_leave_pct: float) -> float:
     """Realistic average DC charging power 10→target.
@@ -185,9 +192,22 @@ def plan_trip(
             reason = "Station trop précoce — planification incohérente."
             break
 
+        # Dernier arrêt : ne recharger que le nécessaire. Si remplir jusqu'à la
+        # cible du mode ferait arriver bien au-dessus de la demande, on réduit la
+        # charge pour atterrir pile à (arrivée voulue + petite marge). Chaque
+        # point de SoC injecté ici se répercute 1:1 sur la SoC d'arrivée (même
+        # batterie, kWh appliqués à tous les points en aval, dont la destination).
+        # Sûr : après ce dernier arrêt la SoC ne fait que décroître — le point le
+        # plus bas est donc l'arrivée elle-même.
+        arrival_without = soc_at(n - 1)  # < min_arrival_destination_pct (garde de boucle)
+        target_arrival = min_arrival_destination_pct + ARRIVAL_MARGIN_PCT
+        if arrival_without + soc_gain >= target_arrival:
+            soc_gain = target_arrival - arrival_without  # > ARRIVAL_MARGIN_PCT > 0
+
+        soc_leave = soc_arrival + soc_gain
         kwh_added = soc_gain / 100.0 * battery_kwh
         station_power = float(best.get("puissance_nominale") or 50.0)
-        effective_kw = _effective_kw(station_power, vehicle_max_dc, target_leave_soc_pct)
+        effective_kw = _effective_kw(station_power, vehicle_max_dc, soc_leave)
         charge_time_min = kwh_added / effective_kw * 60.0
 
         stops.append(ChargingStop(
@@ -199,7 +219,7 @@ def plan_trip(
             city=str(best.get("consolidated_commune") or ""),
             power_kw=station_power,
             soc_arrival_pct=max(0.0, soc_arrival),
-            soc_leave_pct=target_leave_soc_pct,
+            soc_leave_pct=soc_leave,
             kwh_added=kwh_added,
             charge_time_min=charge_time_min,
         ))
