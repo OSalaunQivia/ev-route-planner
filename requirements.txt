@@ -1,7 +1,6 @@
 streamlit>=1.30
 folium>=0.15
 streamlit-folium>=0.18
-streamlit-searchbox>=0.1.13
 streamlit-js-eval>=0.1.7
 requests>=2.31
 python-dotenv>=1.0
