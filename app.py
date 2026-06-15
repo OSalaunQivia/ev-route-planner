@@ -900,6 +900,7 @@ def render_input_view() -> None:
                 style_overrides=SEARCHBOX_STYLE,
                 debounce=400,
                 edit_after_submit="current",
+                default_searchterm=st.session_state.get("origin_typed", {}).get("search", ""),
             )
             if typed:
                 st.session_state.typed_origin_coords = typed
@@ -937,6 +938,7 @@ def render_input_view() -> None:
             style_overrides=SEARCHBOX_STYLE,
             debounce=400,
             edit_after_submit="current",
+            default_searchterm=st.session_state.get("destination", {}).get("search", ""),
         )
     with col_arr_pad:
         st.empty()
