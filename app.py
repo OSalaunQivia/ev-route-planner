@@ -550,23 +550,34 @@ st.markdown(
         transform: translateY(0);
     }
 
-    /* Boutons navigation Google Maps / Waze — vert Qivia, texte noir, logos. */
+    /* Boutons navigation Google Maps / Waze */
     .nav-buttons {
         display: flex; gap: 0.6rem; margin: 0.8rem 0 0.4rem;
     }
     .nav-buttons a {
         flex: 1; display: flex; align-items: center; justify-content: center;
         gap: 0.5rem; padding: 0.7rem 1rem;
-        background: #5FFFA7; color: #03060D !important;
         border-radius: 10px; text-decoration: none !important;
         font-weight: 700; font-size: 0.95rem;
         font-family: "Plus Jakarta Sans", -apple-system, sans-serif;
         transition: all 0.15s ease;
-        box-shadow: 0 0 12px rgba(95,255,167,0.3);
     }
-    .nav-buttons a:hover {
+    .nav-buttons a.nav-maps {
+        background: #FFFFFF; color: #1A1A1A !important;
+        box-shadow: 0 0 12px rgba(255,255,255,0.15);
+    }
+    .nav-buttons a.nav-maps:hover {
         transform: translateY(-1px);
-        box-shadow: 0 0 20px rgba(95,255,167,0.55);
+        box-shadow: 0 0 20px rgba(255,255,255,0.3);
+        filter: brightness(0.95);
+    }
+    .nav-buttons a.nav-waze {
+        background: #33CCFF; color: #03060D !important;
+        box-shadow: 0 0 12px rgba(51,204,255,0.3);
+    }
+    .nav-buttons a.nav-waze:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 0 20px rgba(51,204,255,0.55);
         filter: brightness(1.05);
     }
     .nav-buttons a:active { transform: translateY(0); }
@@ -1808,9 +1819,9 @@ def render_result_view() -> None:
     _waze_icon = _asset_data_uri("waze-icon.png")
     st.markdown(
         f'<div class="nav-buttons">'
-        f'<a href="{nav_url}" target="_blank" rel="noopener">'
+        f'<a class="nav-maps" href="{nav_url}" target="_blank" rel="noopener">'
         f'<img src="{_gmaps_icon}" width="22" height="22" alt="Google Maps"/> Google Maps</a>'
-        f'<a href="{waze_url}" target="_blank" rel="noopener">'
+        f'<a class="nav-waze" href="{waze_url}" target="_blank" rel="noopener">'
         f'<img src="{_waze_icon}" width="22" height="22" alt="Waze"/> Waze</a>'
         f'</div>',
         unsafe_allow_html=True,
