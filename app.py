@@ -462,6 +462,18 @@ st.markdown(
         border-color: #2A3344 !important;
     }
 
+    /* react-select async: keep typed text visible during loading.
+       The library sets opacity:0 on the Input container while fetching;
+       forcing opacity:1 + explicit color on the real <input> element fixes it. */
+    [class*="-Input"] {
+        opacity: 1 !important;
+    }
+    [class*="-Input"] input {
+        color: #FFFFFF !important;
+        opacity: 1 !important;
+        caret-color: #5FFFA7 !important;
+    }
+
     /* Tabs styling */
     button[role="tab"] {
         color: #9AA3B2 !important;
