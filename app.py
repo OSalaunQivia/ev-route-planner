@@ -16,7 +16,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
-from _searchbox import st_searchbox
+from streamlit_searchbox import st_searchbox
 
 from availability import fetch_availability
 from enrichment import enrich_route
