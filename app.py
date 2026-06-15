@@ -16,7 +16,6 @@ import streamlit as st
 from dotenv import load_dotenv
 from streamlit_folium import st_folium
 from streamlit_js_eval import get_geolocation
-from streamlit_searchbox import st_searchbox
 
 from availability import fetch_availability
 from enrichment import enrich_route
@@ -375,6 +374,30 @@ st.markdown(
         color: #9AA3B2 !important;
         font-size: 0.85rem;
         font-weight: 500;
+    }
+
+    /* Native address suggestion buttons — styled to look like dropdown options
+       (left-aligned rows under the Arrivée / départ text field). */
+    [class*="st-key-destination_opt_"] button,
+    [class*="st-key-origin_typed_opt_"] button {
+        background: #0B111C !important;
+        border: 1px solid #1E2A3D !important;
+        color: #FFFFFF !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
+        font-weight: 400 !important;
+        border-radius: 8px !important;
+        margin-top: 4px !important;
+    }
+    [class*="st-key-destination_opt_"] button:hover,
+    [class*="st-key-origin_typed_opt_"] button:hover {
+        background: #16202F !important;
+        border-color: #5FFFA7 !important;
+        color: #5FFFA7 !important;
+    }
+    [class*="st-key-destination_opt_"] button p,
+    [class*="st-key-origin_typed_opt_"] button p {
+        text-align: left !important;
     }
 
     /* Expanders */
@@ -807,27 +830,6 @@ if "step" not in st.session_state:
 # Constants used in both views
 # ============================================================================
 
-SEARCHBOX_STYLE = {
-    "searchbox": {
-        "control": {
-            "backgroundColor": "#0B111C",
-            "border": "1px solid #2A3344",
-            "borderRadius": "8px",
-            "minHeight": "44px",
-            "boxShadow": "none",
-        },
-        "menu": {"backgroundColor": "#0B111C", "border": "1px solid #2A3344"},
-        "menuList": {"backgroundColor": "#0B111C"},
-        "option": {"backgroundColor": "#0B111C", "color": "#FFFFFF", "padding": "10px 12px"},
-        "singleValue": {"color": "#FFFFFF"},
-        "placeholder": {"color": "#9AA3B2"},
-        "input": {"color": "#FFFFFF"},
-        # Keep the dropdown chevron — it's the natural way to open the
-        # options list (Votre position / Votre voiture / Saisir adresse).
-        "dropdownIndicator": {"color": "#9AA3B2"},
-        "indicatorSeparator": {"display": "none"},
-    },
-}
 
 # === User context (hardcoded "connected vehicle" info) ===
 VEHICLE_NAME = TESLA_M3_LR["name"]
@@ -856,6 +858,58 @@ def _origin_dialog() -> None:
                  use_container_width=True):
         st.session_state.origin_mode = "type"
         st.rerun()
+
+
+def _pick_address(prefix: str, label: str, coords: str) -> None:
+    """on_click callback for a suggestion button. Runs BEFORE the rerun (and
+    thus before the text_input is re-instantiated), which is the only safe
+    moment to overwrite a widget-backed session_state key."""
+    st.session_state[f"{prefix}_coords"] = coords
+    st.session_state[f"{prefix}_label"] = label
+    st.session_state[f"{prefix}_query"] = label
+
+
+def native_address_field(prefix: str, placeholder: str) -> str | None:
+    """Native address autocomplete — no iframe / react component.
+
+    A plain ``st.text_input`` plus a list of clickable suggestion buttons.
+    Returns the selected ``'lat,lng'`` string (or None). Because the text lives
+    in a native Streamlit widget keyed by ``<prefix>_query``, it survives reruns
+    (geoloc, other widgets…) instead of being wiped like the old searchbox.
+
+    Suggestions appear after the user submits the field (Enter / blur), which on
+    mobile means tapping "Go" or tapping elsewhere — then tap a result.
+    """
+    query_key = f"{prefix}_query"
+    coords_key = f"{prefix}_coords"
+    label_key = f"{prefix}_label"
+
+    query = st.text_input(
+        placeholder,
+        key=query_key,
+        placeholder=placeholder,
+        label_visibility="collapsed",
+    )
+
+    selected_label = (st.session_state.get(label_key) or "").strip()
+
+    # Only show suggestions while actively searching, i.e. the typed text no
+    # longer matches the label of the address already chosen.
+    if query and query.strip() != selected_label and len(query.strip()) >= 2:
+        results = photon_search(query)
+        if results:
+            for i, (lbl, coords) in enumerate(results):
+                st.button(
+                    lbl,
+                    key=f"{prefix}_opt_{i}",
+                    use_container_width=True,
+                    on_click=_pick_address,
+                    args=(prefix, lbl, coords),
+                )
+        else:
+            st.caption("Aucune adresse trouvée.")
+
+    return st.session_state.get(coords_key)
 
 
 def render_input_view() -> None:
@@ -893,14 +947,8 @@ def render_input_view() -> None:
     col_main, col_more = st.columns([6, 1], vertical_alignment="top", gap="medium")
     with col_main:
         if mode == "type":
-            typed = st_searchbox(
-                photon_search,
-                key="origin_typed",
-                placeholder="Saisir une adresse de départ",
-                style_overrides=SEARCHBOX_STYLE,
-                debounce=400,
-                edit_after_submit="current",
-                default_searchterm=st.session_state.get("origin_typed", {}).get("search", ""),
+            typed = native_address_field(
+                "origin_typed", "Saisir une adresse de départ"
             )
             if typed:
                 st.session_state.typed_origin_coords = typed
@@ -931,15 +979,7 @@ def render_input_view() -> None:
     # ARRIVÉE — same column structure as départ so the box width matches.
     col_arr, col_arr_pad = st.columns([6, 1], vertical_alignment="top", gap="medium")
     with col_arr:
-        destination = st_searchbox(
-            photon_search,
-            key="destination",
-            placeholder="Arrivée",
-            style_overrides=SEARCHBOX_STYLE,
-            debounce=400,
-            edit_after_submit="current",
-            default_searchterm=st.session_state.get("destination", {}).get("search", ""),
-        )
+        destination = native_address_field("destination", "Arrivée")
     with col_arr_pad:
         st.empty()
 
