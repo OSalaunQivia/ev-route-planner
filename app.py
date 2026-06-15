@@ -1822,9 +1822,9 @@ def render_result_view() -> None:
     st.markdown(
         f'<div class="nav-buttons">'
         f'<a class="nav-maps" href="{nav_url}" target="_blank" rel="noopener">'
-        f'<img src="{_gmaps_icon}" width="22" height="22" alt="Google Maps"/> Google Maps</a>'
+        f'<img src="{_gmaps_icon}" width="36" height="36" alt="Google Maps"/> Google Maps</a>'
         f'<a class="nav-waze" href="{waze_url}" target="_blank" rel="noopener">'
-        f'<img src="{_waze_icon}" width="22" height="22" alt="Waze"/> Waze</a>'
+        f'<img src="{_waze_icon}" width="36" height="36" alt="Waze"/> Waze</a>'
         f'</div>',
         unsafe_allow_html=True,
     )
