@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Route Planner Carburant — Qivia</title>
+<script>if(sessionStorage.getItem('qivia_auth')!=='1'){ sessionStorage.setItem('qivia_dest','qivia_mobile.html'); window.location.replace('index.html'); }</script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#0D1117;--green:#00C48C;--blue:#2D6BE4;}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;width:100%;overflow:hidden;font-family:'Inter',sans-serif;background:#aab;}
+#map{position:absolute;inset:0;}
+.leaflet-control-attribution{display:none!important;}
+#panel{position:absolute;top:0;left:0;right:0;z-index:1000;background:#0D1117;color:#fff;border-bottom:1px solid rgba(255,255,255,.1);box-shadow:0 8px 24px rgba(0,0,0,.4);padding:12px 12px 14px;display:none;max-height:90%;overflow-y:auto;}
+body.qf-open #panel{display:block;}
+.f-label{font-size:.6rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,.4);margin:9px 2px 6px;}
+.ptrow{display:flex;gap:6px;}
+.ptrow input{flex:1;height:38px;border:1px solid rgba(255,255,255,.15);border-radius:9px;padding:0 12px;font-family:inherit;font-size:.85rem;background:rgba(255,255,255,.08);color:#fff;}
+.ptrow input::placeholder{color:rgba(255,255,255,.4);}
+.btn{height:38px;padding:0 12px;border:0;border-radius:9px;font-weight:700;font-family:inherit;font-size:.78rem;cursor:pointer;white-space:nowrap;}
+.btn.d{background:rgba(255,255,255,.12);color:#fff;}
+.go{width:100%;height:42px;margin-top:12px;background:var(--green);color:#0D1117;border:0;border-radius:10px;font-weight:800;font-size:.9rem;cursor:pointer;font-family:inherit;}
+.radrow{display:flex;gap:6px;}
+.radbtn{flex:1;height:34px;border:1.5px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:rgba(255,255,255,.75);border-radius:9px;font-family:inherit;font-size:.78rem;font-weight:700;cursor:pointer;}
+.radbtn.on{border-color:var(--green);color:var(--green);background:rgba(0,196,140,.12);}
+.fuelsel{width:100%;height:38px;border:1px solid rgba(255,255,255,.15);border-radius:9px;padding:0 10px;font-family:inherit;font-size:.82rem;background:rgba(255,255,255,.08);color:#fff;}
+.fuelsel option{color:#111;}
+.netgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;align-items:start;}
+.netbtn{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;}
+.netbtn .b{width:100%;height:44px;border:1.5px solid rgba(255,255,255,.18);border-radius:11px;background:#fff;display:flex;align-items:center;justify-content:center;padding:4px;overflow:hidden;font-size:.6rem;font-weight:700;color:#0D1117;}
+.netbtn .b img.netimg{max-height:28px;max-width:92%;object-fit:contain;}
+.netbtn .b img.netimg.round{height:30px;width:30px;border-radius:50%;object-fit:cover;}
+/* Carte résultats */
+#card{position:absolute;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:900;background:#0D1117;color:#fff;border-radius:16px;box-shadow:0 8px 26px rgba(0,0,0,.45);padding:12px 14px;display:none;}
+#card.show{display:block;}
+.rstat{display:flex;gap:16px;margin-bottom:8px;}
+.rstat div span{display:block;}
+.rstat .v{font-size:1.05rem;font-weight:800;color:var(--green);}
+.rstat .k{font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;color:rgba(255,255,255,.45);}
+.reco{background:rgba(0,196,140,.12);border:1px solid rgba(0,196,140,.4);border-radius:11px;padding:9px 11px;margin-bottom:8px;}
+.reco .t{font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;color:var(--green);font-weight:700;margin-bottom:2px;}
+.reco .n{font-weight:800;font-size:.9rem;}
+.reco .s{font-size:.74rem;color:rgba(255,255,255,.7);margin-top:1px;}
+.reco .p{float:right;font-weight:800;color:var(--green);font-size:1rem;}
+#card .list-btn{width:100%;height:36px;background:rgba(255,255,255,.1);color:#fff;border:0;border-radius:9px;font-weight:700;font-family:inherit;font-size:.8rem;cursor:pointer;}
+#card .hint{font-size:.72rem;color:rgba(255,255,255,.55);}
+#sheet{position:absolute;inset:0;z-index:1500;background:rgba(0,0,0,.45);display:none;align-items:flex-end;}
+#sheet.show{display:flex;}
+#sheet .inner{background:#fff;width:100%;max-height:74%;overflow:auto;border-radius:18px 18px 0 0;padding:14px 14px calc(20px + env(safe-area-inset-bottom));}
+#sheet h3{font-size:1rem;margin:0 4px 10px;}
+.it{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 6px;border:0;border-bottom:1px solid #eee;background:none;font-family:inherit;cursor:pointer;}
+.it .nm{font-weight:700;font-size:.85rem;color:#0D1117;}
+.it .sub{font-size:.73rem;color:#6E7A8A;margin-top:2px;}
+.it .badge{display:inline-block;font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:8px;margin-right:4px;}
+.it .km{margin-left:auto;text-align:right;font-weight:800;color:#00785a;font-size:.84rem;white-space:nowrap;}
+.it .km small{display:block;color:#6E7A8A;font-weight:600;font-size:.68rem;}
+#toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:1600;background:#0D1117;color:#fff;padding:9px 16px;border-radius:20px;font-size:.8rem;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.4);display:none;}
+#toast.show{display:block;}
+#loader{position:absolute;inset:0;z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#0D1117;}
+#loader.hide{display:none;}
+#loader .lq{width:46px;height:46px;border-radius:12px;background:var(--green);display:flex;align-items:center;justify-content:center;color:#0D1117;font-size:1.3rem;font-weight:800;}
+#loader .lt{color:#fff;font-size:.9rem;font-weight:600;}
+.pop b{font-size:.86rem;}.pop .row{font-size:.78rem;color:#444;margin-top:2px;}.pop .pr{color:#00785a;font-weight:700;}
+.leaflet-popup-content{margin:12px 14px;min-width:190px;max-width:80vw;}
+.bsheet-it{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 8px;border:0;border-bottom:1px solid #eee;background:none;font-family:inherit;font-size:.9rem;cursor:pointer;}
+.bsheet-it img{height:22px;width:34px;object-fit:contain;}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <div class="f-label">Départ</div>
+  <div class="ptrow">
+    <button class="btn d" onclick="useMyLocation()">📍</button>
+    <input id="from" placeholder="Ville ou adresse de départ" onkeydown="if(event.key==='Enter')calcRoute()">
+  </div>
+  <div class="f-label">Arrivée</div>
+  <div class="ptrow">
+    <input id="to" placeholder="Ville ou adresse d'arrivée" onkeydown="if(event.key==='Enter')calcRoute()">
+  </div>
+  <div class="f-label">Réseau &amp; enseigne (accès)</div>
+  <div class="netgrid" id="netgrid"></div>
+  <div class="f-label">Carburant</div>
+  <select class="fuelsel" id="sel-fuel" onchange="fuelType=this.value; if(lastNear)renderResults();">
+    <option value="gazole">Gazole</option><option value="sp95">SP95</option><option value="e10">E10</option>
+    <option value="sp98">SP98</option><option value="e85">E85</option><option value="gplc">GPLc</option><option value="">Le moins cher</option>
+  </select>
+  <div class="f-label">Largeur du corridor</div>
+  <div class="radrow" id="corrrow"></div>
+  <button class="go" onclick="calcRoute()">Calculer l'itinéraire</button>
+</div>
+
+<div id="toast"></div>
+<div id="card">
+  <div class="rstat"><div><span class="v" id="r-dist">—</span><span class="k">Distance</span></div><div><span class="v" id="r-dur">—</span><span class="k">Durée</span></div><div><span class="v" id="r-n">—</span><span class="k">Stations corridor</span></div></div>
+  <div class="reco" id="reco" style="display:none"></div>
+  <button class="list-btn" id="list-btn" onclick="openList()" style="display:none">Voir les stations le long du trajet</button>
+  <div class="hint" id="card-hint">Renseignez départ et arrivée dans « Filtres », puis calculez l'itinéraire.</div>
+</div>
+<div id="sheet"><div class="inner"><h3 id="sheet-title">Stations le long du trajet</h3><div id="sheet-list"></div></div></div>
+<div id="loader"><div class="lq">Q</div><div class="lt">Chargement…</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="qivia_logos.js"></script>
+<script>
+const FUEL_URL='stations_lite.geojson';
+const NETS=[
+  {k:'qivia',label:'Qivia',color:'#00C48C',logo:LOGOS.qivia},
+  {k:'dkv',label:'DKV',color:'#F97316',logo:LOGOS.dkv},
+  {k:'edenred',label:'Edenred',color:'#C0392B',logo:EDENRED_LOGO},
+  {k:'total',label:'Total',color:'#EF4444',logo:LOGOS.total},
+];
+const FN={gazole:'Gazole',sp95:'SP95',e10:'E10',sp98:'SP98',e85:'E85',gplc:'GPLc'};
+const CORRIDORS=[2,5,10];
+let map, routeLayer=null, stationLayer=null, aMk=null, bMk=null, recoMk=null;
+let fuel=[], curNet='qivia', curBrand='', curBrandSlug='', fuelType='gazole', corridor=5;
+let lastNear=null, lastReco=null;
+
+function decode(lng,lat){ if(Math.abs(lat)>90)lat/=1e5; if(Math.abs(lng)>180)lng/=1e5; return [lat,lng]; }
+function slugOf(b){ return BRAND_LOGO_MAP[(b||'').toLowerCase().trim()]||'autre'; }
+function hav(aLat,aLon,bLat,bLon){ const R=6371,toR=x=>x*Math.PI/180; const dLat=toR(bLat-aLat),dLon=toR(bLon-aLon);
+  const x=Math.sin(dLat/2)**2+Math.cos(toR(aLat))*Math.cos(toR(bLat))*Math.sin(dLon/2)**2; return 2*R*Math.asin(Math.sqrt(x)); }
+function netColorOf(){ const n=NETS.find(x=>x.k===curNet); return n?n.color:'#00C48C'; }
+function fuelInNet(s,net){ return net==='qivia'?true:net==='dkv'?s.dkv:net==='edenred'?s.edenred:net==='total'?s.total:true; }
+function netsOf(s){ return [['Qivia',true],['DKV',s.dkv],['Edenred',s.edenred],['Total',s.total]].filter(x=>x[1]).map(x=>x[0]); }
+function priceOf(s){ if(fuelType) return s.prices[fuelType]!=null?s.prices[fuelType]:null; const v=Object.values(s.prices); return v.length?Math.min(...v):null; }
+
+async function loadFuel(){
+  const r=await fetch(FUEL_URL); const gj=await r.json();
+  fuel=(gj.features||[]).map(f=>{ const g=f.geometry||{},p=f.properties||{};
+    if(!Array.isArray(g.coordinates))return null; const [lat,lon]=decode(g.coordinates[0],g.coordinates[1]); if(!lat||!lon)return null;
+    const prices={}; [['gazole_prix','gazole'],['sp95_prix','sp95'],['e10_prix','e10'],['sp98_prix','sp98'],['e85_prix','e85'],['gplc_prix','gplc']]
+      .forEach(([s,d])=>{const v=parseFloat(p[s]); if(!isNaN(v)&&v>0)prices[d]=v;});
+    return {lat,lon,brand:String(p.brand||'Autre'),dkv:Number(p.dkv)===1,edenred:Number(p.edenred)===1,total:Number(p.total_energies)===1,
+      ville:String(p.ville||''),cp:String(p.cp||''),adresse:String(p.adresse||''),prices};
+  }).filter(Boolean);
+}
+
+function toast(t){ const e=document.getElementById('toast'); e.textContent=t; e.classList.add('show'); clearTimeout(e._t); e._t=setTimeout(()=>e.classList.remove('show'),3000); }
+async function geo(q){ const r=await fetch('https://api-adresse.data.gouv.fr/search/?limit=1&q='+encodeURIComponent(q)); const d=await r.json(); const f=(d.features||[])[0]; return f?{lat:f.geometry.coordinates[1],lon:f.geometry.coordinates[0],label:f.properties.label}:null; }
+function useMyLocation(){ if(!navigator.geolocation)return toast('Géolocalisation indisponible');
+  navigator.geolocation.getCurrentPosition(p=>{ document.getElementById('from').value=`${p.coords.latitude.toFixed(5)}, ${p.coords.longitude.toFixed(5)}`; toast('Position de départ enregistrée'); },()=>toast('Position refusée'),{timeout:8000}); }
+function parseLatLon(s){ const m=String(s).match(/^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*$/); return m?{lat:+m[1],lon:+m[2],label:'Ma position'}:null; }
+
+async function calcRoute(){
+  const fq=document.getElementById('from').value.trim(), tq=document.getElementById('to').value.trim();
+  if(!fq||!tq){ toast('Renseignez le départ et l\'arrivée'); document.body.classList.add('qf-open'); return; }
+  showLoader('Calcul de l\'itinéraire…');
+  try{
+    const A=parseLatLon(fq)||await geo(fq); const B=parseLatLon(tq)||await geo(tq);
+    if(!A||!B){ hideLoader(); toast('Adresse introuvable'); return; }
+    const url=`https://router.project-osrm.org/route/v1/driving/${A.lon},${A.lat};${B.lon},${B.lat}?overview=full&geometries=geojson`;
+    const r=await fetch(url); const d=await r.json();
+    if(!d.routes||!d.routes[0]){ hideLoader(); toast('Itinéraire introuvable'); return; }
+    const route=d.routes[0];
+    drawRoute(route, A, B);
+    computeCorridor(route);
+    hideLoader();
+    document.body.classList.remove('qf-open');
+  }catch(e){ hideLoader(); toast('Erreur de routage (réessayez)'); console.error(e); }
+}
+
+function drawRoute(route, A, B){
+  if(routeLayer) map.removeLayer(routeLayer);
+  routeLayer=L.geoJSON(route.geometry,{style:{color:'#2D6BE4',weight:5,opacity:.85}}).addTo(map);
+  if(aMk)map.removeLayer(aMk); if(bMk)map.removeLayer(bMk);
+  aMk=L.marker([A.lat,A.lon],{icon:endIcon('A','#0D1117')}).addTo(map);
+  bMk=L.marker([B.lat,B.lon],{icon:endIcon('B','#2D6BE4')}).addTo(map);
+  map.fitBounds(routeLayer.getBounds(),{padding:[40,40]});
+  document.getElementById('r-dist').textContent=(route.distance/1000).toFixed(0)+' km';
+  const h=Math.floor(route.duration/3600), m=Math.round((route.duration%3600)/60);
+  document.getElementById('r-dur').textContent=(h?h+'h':'')+(m+'min');
+  document.getElementById('card').classList.add('show');
+  document.getElementById('card-hint').style.display='none';
+}
+function endIcon(t,c){ return L.divIcon({className:'',iconSize:[26,26],html:`<div style="width:24px;height:24px;border-radius:50%;background:${c};color:#fff;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font:700 .8rem Inter">${t}</div>`}); }
+
+function computeCorridor(route){
+  const coords=route.geometry.coordinates; // [lng,lat]
+  const step=Math.max(1,Math.floor(coords.length/400)); const samp=coords.filter((_,i)=>i%step===0);
+  let minLat=1e9,maxLat=-1e9,minLon=1e9,maxLon=-1e9;
+  samp.forEach(c=>{minLon=Math.min(minLon,c[0]);maxLon=Math.max(maxLon,c[0]);minLat=Math.min(minLat,c[1]);maxLat=Math.max(maxLat,c[1]);});
+  const pad=corridor/111+0.02;
+  const cand=fuel.filter(s=> s.lat>=minLat-pad&&s.lat<=maxLat+pad&&s.lon>=minLon-pad&&s.lon<=maxLon+pad
+    && fuelInNet(s,curNet) && (!curBrandSlug||slugOf(s.brand)===curBrandSlug) && (!fuelType||s.prices[fuelType]!=null));
+  cand.forEach(s=>{ let best=1e9,bi=0; for(let i=0;i<samp.length;i++){ const d=hav(s.lat,s.lon,samp[i][1],samp[i][0]); if(d<best){best=d;bi=i;} } s._d=best; s._i=bi; });
+  lastNear=cand.filter(s=>s._d<=corridor).sort((a,b)=>a._i-b._i);
+  // recommandation : station accessible la moins chère pour le carburant choisi
+  lastReco=null; let bestP=1e9;
+  lastNear.forEach(s=>{ const p=priceOf(s); if(p!=null&&p<bestP){ bestP=p; lastReco=s; } });
+  renderResults();
+}
+
+function renderResults(){
+  if(!lastNear) return;
+  document.getElementById('r-n').textContent=lastNear.length.toLocaleString('fr-FR');
+  // marqueurs stations
+  if(stationLayer) map.removeLayer(stationLayer);
+  stationLayer=L.layerGroup(lastNear.map(s=>L.circleMarker([s.lat,s.lon],{radius:5,color:'#fff',weight:1.5,fillColor:netColorOf(),fillOpacity:.95}).bindPopup(popupFuel(s)))).addTo(map);
+  if(recoMk){ map.removeLayer(recoMk); recoMk=null; }
+  const reco=document.getElementById('reco'); const lb=document.getElementById('list-btn');
+  if(lastReco){
+    const p=priceOf(lastReco);
+    reco.style.display='block';
+    reco.innerHTML=`<span class="p">${p!=null?p.toFixed(3)+'€':''}</span><div class="t">★ Station Qivia recommandée${fuelType?' · '+FN[fuelType]:''}</div><div class="n">${lastReco.brand}</div><div class="s">${lastReco.ville||''}${lastReco.cp?' · '+lastReco.cp:''} · à ${lastReco._d.toFixed(1)} km du trajet</div>`;
+    reco.onclick=()=>{ map.setView([lastReco.lat,lastReco.lon],14); };
+    recoMk=L.marker([lastReco.lat,lastReco.lon],{icon:L.divIcon({className:'',iconSize:[30,30],html:'<div style="width:28px;height:28px;border-radius:50%;background:#00C48C;border:3px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;color:#0D1117;font:800 .9rem Inter">★</div>'})}).addTo(map).bindPopup(popupFuel(lastReco));
+    lb.style.display='block';
+  } else { reco.style.display='none'; lb.style.display = lastNear.length?'block':'none'; }
+  renderList();
+}
+function popupFuel(s){ let pr=Object.entries(s.prices).map(([k,v])=>`<span class="pr">${FN[k]} ${v.toFixed(3)}€</span>`).join(' · ')||'<span style="color:#999">Prix indisponible</span>';
+  const acc=netsOf(s).join(' · ');
+  return `<div class="pop"><b>${s.brand}</b><div class="row">${s.adresse}, ${s.cp} ${s.ville}</div><div class="row">${pr}</div><div class="row" style="color:#888">Accès : ${acc}</div></div>`; }
+const NETBG={Qivia:'#00C48C',DKV:'#F97316',Edenred:'#C0392B',Total:'#EF4444'};
+function renderList(){
+  const box=document.getElementById('sheet-list');
+  if(!lastNear||!lastNear.length){ box.innerHTML='<div style="padding:18px;color:#888;text-align:center">Aucune station dans ce corridor.</div>'; return; }
+  box.innerHTML=lastNear.slice(0,60).map(s=>{ const p=priceOf(s);
+    const badges=netsOf(s).map(n=>`<span class="badge" style="background:${NETBG[n]}22;color:${NETBG[n]}">${n}</span>`).join('');
+    return `<button class="it" data-lat="${s.lat}" data-lon="${s.lon}"><div><div class="nm">${s.brand}${s===lastReco?' ★':''}</div><div class="sub">${s.ville||''} · ${badges}</div></div><div class="km">${p!=null?p.toFixed(3)+'€':'—'}<small>${s._d.toFixed(1)} km du trajet</small></div></button>`;
+  }).join('');
+  box.querySelectorAll('.it').forEach(b=>b.onclick=()=>{ closeList(); map.setView([+b.dataset.lat,+b.dataset.lon],15); });
+}
+function openList(){ document.getElementById('sheet').classList.add('show'); }
+function closeList(){ document.getElementById('sheet').classList.remove('show'); }
+document.getElementById('sheet').addEventListener('click',e=>{ if(e.target.id==='sheet')closeList(); });
+
+function buildCorr(){ const g=document.getElementById('corrrow'); g.innerHTML='';
+  CORRIDORS.forEach(c=>{ const b=document.createElement('button'); b.className='radbtn'+(c===corridor?' on':''); b.textContent=c+' km';
+    b.onclick=()=>{ corridor=c; [...g.children].forEach(x=>x.classList.remove('on')); b.classList.add('on'); if(routeLayer){ /* recompute */ recompute(); } }; g.appendChild(b); }); }
+let lastRoute=null;
+function recompute(){ if(lastRoute) computeCorridor(lastRoute); }
+function buildNetGrid(){ const g=document.getElementById('netgrid'); g.innerHTML='';
+  NETS.forEach(n=>{ const active=curNet===n.k; const d=document.createElement('div'); d.className='netbtn';
+    d.onclick=()=>{ curNet=n.k; curBrand=''; curBrandSlug=''; setBrandLabel();
+      [...g.children].forEach(x=>{const b=x.querySelector('.b'); if(b){b.style.borderColor='';b.style.borderWidth='';}});
+      const b=d.querySelector('.b'); b.style.borderColor=n.color; b.style.borderWidth='2.5px'; recompute(); };
+    const rc=n.k==='qivia'?' round':'';
+    d.innerHTML=`<span class="b" style="${active?`border-color:${n.color};border-width:2.5px`:''}"><img class="netimg${rc}" src="${n.logo}" alt="${n.label}"></span>`;
+    g.appendChild(d); });
+  const b=document.createElement('div'); b.className='netbtn'; b.onclick=openBrandSheet;
+  b.innerHTML='<span class="b" id="brandbtn-label">Ens.</span>'; g.appendChild(b); }
+function setBrandLabel(){ const el=document.getElementById('brandbtn-label'); if(!el)return;
+  if(curBrand){ const src=getBrandImgSrc(curBrand); el.innerHTML=src?`<img class="netimg" src="${src}">`:curBrand; el.style.borderColor='#00C48C'; el.style.borderWidth='2.5px'; }
+  else { el.textContent='Ens.'; el.style.borderColor=''; el.style.borderWidth=''; } }
+function openBrandSheet(){
+  const items=[{name:'Toutes les enseignes',slug:'',img:null}];
+  BRANDS_EXTRA.forEach(b=>{ items.push({name:b,slug:slugOf(b),img:getBrandImgSrc(b)}); });
+  let html='<div style="font-weight:800;margin:2px 4px 10px">Choisir une enseigne</div>';
+  items.forEach((it,i)=>{ html+=`<button class="bsheet-it" data-i="${i}">${it.img?`<img src="${it.img}">`:'<span style="width:34px"></span>'}<span>${it.name}</span></button>`; });
+  const ov=document.createElement('div'); ov.style.cssText='position:absolute;inset:0;z-index:3000;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;';
+  ov.innerHTML=`<div style="background:#fff;width:100%;max-height:72%;overflow:auto;border-radius:18px 18px 0 0;padding:14px 16px calc(20px + env(safe-area-inset-bottom))">${html}</div>`;
+  ov.onclick=e=>{ if(e.target===ov)ov.remove(); };
+  document.body.appendChild(ov);
+  ov.querySelectorAll('.bsheet-it').forEach(btn=>{ btn.onclick=()=>{ const it=items[+btn.dataset.i]; curBrand=it.slug?it.name:''; curBrandSlug=it.slug; setBrandLabel(); ov.remove(); recompute(); }; });
+}
+function showLoader(t){ const l=document.getElementById('loader'); l.querySelector('.lt').textContent=t||'Chargement…'; l.classList.remove('hide'); }
+function hideLoader(){ document.getElementById('loader').classList.add('hide'); }
+
+// garder la route pour recalcul corridor/filtre
+const _origCompute=computeCorridor;
+computeCorridor=function(route){ lastRoute=route; _origCompute(route); };
+
+(async function(){
+  map=L.map('map',{zoomControl:true,attributionControl:false}).setView([46.6,2.4],6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+  try{ await loadFuel(); buildNetGrid(); buildCorr(); hideLoader(); document.body.classList.add('qf-open'); }
+  catch(e){ showLoader('Erreur de chargement'); console.error(e); }
+  setTimeout(()=>map.invalidateSize(),300);
+  window.addEventListener('resize',()=>map.invalidateSize());
+})();
+</script>
+</body>
+</html>
