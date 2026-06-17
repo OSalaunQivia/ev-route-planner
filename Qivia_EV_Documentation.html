@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<title>Qivia EV — Documentation technique</title>
+<style>
+@page { size: A4; margin: 18mm 16mm; }
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+  color: #1A1F2B; line-height: 1.55; font-size: 11pt;
+  max-width: 820px; margin: 0 auto; padding: 24px;
+}
+h1 { font-size: 24pt; color: #0B111C; border-bottom: 3px solid #5FFFA7;
+     padding-bottom: 8px; margin-top: 0; }
+h2 { font-size: 15pt; color: #0B111C; margin-top: 26px;
+     border-bottom: 1px solid #D6DBE3; padding-bottom: 4px; }
+h3 { font-size: 12.5pt; color: #18324A; margin-top: 18px; }
+h2, h3 { page-break-after: avoid; }
+table, figure, pre { page-break-inside: avoid; }
+a { color: #0B7C53; text-decoration: none; }
+code { font-family: "SF Mono", Menlo, monospace; font-size: 9.5pt;
+       background: #F1F4F8; padding: 1px 4px; border-radius: 3px; }
+pre { background: #0B111C; color: #E8EDF4; padding: 12px 14px; border-radius: 6px;
+      overflow-x: auto; font-size: 9pt; line-height: 1.45; }
+pre code { background: none; color: inherit; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 9.5pt; }
+th, td { border: 1px solid #D6DBE3; padding: 6px 9px; text-align: left;
+         vertical-align: top; }
+th { background: #0B111C; color: #fff; font-weight: 600; }
+tr:nth-child(even) td { background: #F7F9FB; }
+blockquote { border-left: 4px solid #FBBF24; background: #FFFBEB; margin: 12px 0;
+             padding: 8px 14px; color: #5A4A00; }
+hr { border: none; border-top: 1px solid #D6DBE3; margin: 22px 0; }
+strong { color: #0B111C; }
+</style></head>
+<body><h1 id="qivia-ev-documentation-technique">Qivia EV — Documentation technique</h1>
+<p><strong>Audience :</strong> CTO / équipe technique
+<strong>Périmètre :</strong> France
+<strong>Date :</strong> 2026-06-10
+<strong>Statut :</strong> moteur de planification fonctionnel + proto « Copilote » (handoff navigation). App native en préparation.</p>
+<hr />
+<h2 id="sommaire">Sommaire</h2>
+<ol>
+<li>Vue d'ensemble</li>
+<li>Fonctionnalités</li>
+<li>Modèle de données (champ par champ)</li>
+<li>Sources de données, fréquences de rafraîchissement, licences</li>
+<li>Abonnements, clés API et coûts réels</li>
+<li>Algorithmes</li>
+<li>Architecture logique &amp; performance</li>
+<li>Conformité &amp; juridique (RGPD/CNIL, radars)</li>
+<li>Sécurité</li>
+<li>Précision et limites du modèle</li>
+<li>Marche à suivre (roadmap technique)</li>
+<li>Annexes — constantes &amp; formules</li>
+</ol>
+<hr />
+<h2 id="1-vue-densemble">1. Vue d'ensemble</h2>
+<p>Le produit est un <strong>moteur de planification d'itinéraire pour véhicules électriques</strong> qui, à partir d'un point de départ, d'une destination et de l'état de charge réel d'un véhicule, calcule :</p>
+<ul>
+<li>l'itinéraire routier (trafic temps réel inclus) ;</li>
+<li>la <strong>consommation énergétique</strong> prédite, corrigée par la météo et le relief ;</li>
+<li>les <strong>arrêts de recharge optimaux</strong> (où, quand, combien de temps, à quel SoC) ;</li>
+<li>le <strong>coût de recharge</strong> et les <strong>péages</strong> ;</li>
+<li>le <strong>SoC à l'arrivée</strong> et la durée totale (conduite + charge) ;</li>
+<li>la <strong>disponibilité</strong> des bornes retenues (quasi temps réel) ;</li>
+<li>une <strong>remise à la navigation</strong> via deeplink Google Maps + QR (proto).</li>
+</ul>
+<p>Le tout est conçu autour d'un <strong>pipeline en 4 phases</strong> : <em>routing → enrichissement &amp; filtrage des bornes (en parallèle) → planification des arrêts → disponibilité &amp; coût.</em></p>
+<hr />
+<h2 id="2-fonctionnalites">2. Fonctionnalités</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Fonctionnalité</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F1</td>
+<td>Itinéraire EV avec trafic temps réel</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F2</td>
+<td>Modèle de consommation véhicule (courbe vitesse→conso, style de conduite)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F3</td>
+<td>Correction conso par <strong>météo</strong> (température + vent de face/dos)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F4</td>
+<td>Correction conso par <strong>relief</strong> (dénivelé + récupération en descente)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F5</td>
+<td>Sélection des bornes dans un <strong>corridor</strong> autour du trajet</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F6</td>
+<td><strong>Planner d'arrêts</strong> (modes Rapide / Économique)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F7</td>
+<td>Variantes <strong>avec / sans péage</strong></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F8</td>
+<td><strong>Coût de recharge</strong> (tarification IRVE + référentiel opérateurs)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F9</td>
+<td><strong>Disponibilité</strong> des bornes (quasi temps réel)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F10</td>
+<td>SoC arrivée, péages, durée totale</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>F11</td>
+<td><strong>Handoff navigation</strong> (deeplink Google Maps + QR)</td>
+<td>✅ (proto)</td>
+</tr>
+<tr>
+<td>F12</td>
+<td>Branchement <strong>télématique</strong> (SoC réel, 30 s)</td>
+<td>🔜 en cours</td>
+</tr>
+<tr>
+<td>F13</td>
+<td>Navigation embarquée temps réel + reroute auto</td>
+<td>🔜 roadmap</td>
+</tr>
+<tr>
+<td>F14</td>
+<td><strong>Zones de danger</strong> (radars)</td>
+<td>🔜 roadmap</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-modele-de-donnees-champ-par-champ">3. Modèle de données (champ par champ)</h2>
+<h3 id="31-profil-vehicule">3.1 Profil véhicule</h3>
+<table>
+<thead>
+<tr>
+<th>Champ</th>
+<th>Type</th>
+<th>Exemple (Tesla M3 LR)</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>battery_kwh</code></td>
+<td>float</td>
+<td>75.0</td>
+<td>Capacité batterie</td>
+</tr>
+<tr>
+<td><code>aux_kw</code></td>
+<td>float</td>
+<td>1.0</td>
+<td>Consommation auxiliaire (climatisation, etc.)</td>
+</tr>
+<tr>
+<td><code>max_dc_kw</code></td>
+<td>float</td>
+<td>250.0</td>
+<td>Puissance DC crête acceptée par le véhicule</td>
+</tr>
+<tr>
+<td><code>consumption_curve</code></td>
+<td>list[(km/h, kWh/km)]</td>
+<td>(0,0.130)…(130,0.210)</td>
+<td>Conso par palier de vitesse (route plate, climat doux)</td>
+</tr>
+</tbody>
+</table>
+<p>Style de conduite appliqué en multiplicateur sur la courbe : <strong>Souple 0.85 / Normal 1.0 / Dynamique 1.18</strong>.</p>
+<h3 id="32-point-ditineraire-routepoint">3.2 Point d'itinéraire (<code>RoutePoint</code>)</h3>
+<p><code>lat</code>, <code>lng</code>, <code>km</code> (distance cumulée), <code>soc_pct</code> (SoC bridé ≥ 0 pour l'affichage), <code>speed_kmh</code> (vitesse moyenne de la section), <code>kwh_consumed_from_start</code> (<strong>conso cumulée NON bridée</strong> — sert au planner pour calculer les déficits « virtuels » au-delà de l'autonomie réelle).</p>
+<h3 id="33-resultat-ditineraire-routeresult">3.3 Résultat d'itinéraire (<code>RouteResult</code>)</h3>
+<p><code>provider</code>, <code>points[]</code>, <code>total_km</code>, <code>total_consumption_kwh</code>, <code>soc_at_arrival_pct</code>, <code>first_below_10pct</code>, <code>total_duration_s</code>, <code>total_toll_eur</code>, <code>avoids_tolls</code>.</p>
+<h3 id="34-arret-de-recharge-chargingstop">3.4 Arrêt de recharge (<code>ChargingStop</code>)</h3>
+<p><code>km</code>, <code>lat</code>, <code>lng</code>, <code>name</code>, <code>operator</code>, <code>city</code>, <code>power_kw</code>, <code>soc_arrival_pct</code>, <code>soc_leave_pct</code>, <code>kwh_added</code>, <code>charge_time_min</code>.</p>
+<h3 id="35-plan-de-trajet-tripplan">3.5 Plan de trajet (<code>TripPlan</code>)</h3>
+<p><code>stops[]</code>, <code>feasible</code>, <code>reason</code>, <code>arrival_soc_pct</code>, <code>drive_time_s</code>, <code>charge_time_s</code>, <code>total_time_s</code>, <code>updated_points[]</code> (profil SoC après application des recharges), <code>mode</code>.</p>
+<h3 id="36-bornes-irve-champs-exploites">3.6 Bornes IRVE (champs exploités)</h3>
+<p><code>lat</code>/<code>lng</code> (consolidated_latitude/longitude), <code>puissance_nominale</code>, <code>nom_operateur</code>, <code>nom_station</code>, <code>consolidated_commune</code>, <code>prise_type_*</code> (Type 2 / Combo CCS / CHAdeMO / E-F), <code>horaires</code>, <code>tarification</code> (texte libre).</p>
+<h3 id="37-meteo-elevation-disponibilite-prix">3.7 Météo / Élévation / Disponibilité / Prix</h3>
+<ul>
+<li>Météo (<code>WeatherSample</code>) : <code>temp_c</code>, <code>wind_speed_kmh</code>, <code>wind_dir_deg</code> (direction d'où vient le vent).</li>
+<li>Élévation : altitude (m) par coordonnée.</li>
+<li>Disponibilité : <code>status</code>, <code>n_total</code>, <code>n_available</code>, <code>n_occupied</code>.</li>
+<li>Prix : <code>price_per_kwh</code>, <code>total_eur</code>, <code>source</code> ∈ {irve, operator, tier}.</li>
+</ul>
+<h3 id="38-telematique-datalake-client-a-brancher">3.8 Télématique (datalake client) — <em>à brancher</em></h3>
+<p>Flux rafraîchi <strong>30 s</strong> : SoC (%), position GPS, vitesse/style, identifiant véhicule, identifiant conducteur. Remplace la saisie manuelle du SoC dans le proto.</p>
+<hr />
+<h2 id="4-sources-de-donnees-frequences-licences">4. Sources de données, fréquences, licences</h2>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Donnée</th>
+<th>Rafraîchissement</th>
+<th>Clé</th>
+<th>Licence / statut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>HERE Routing API v8</strong></td>
+<td>itinéraire, polyline, conso, durée, péages, trafic</td>
+<td><strong>À la demande</strong> (trafic temps réel via <code>departureTime</code>)</td>
+<td>Oui</td>
+<td>Commerciale, freemium</td>
+</tr>
+<tr>
+<td><strong>TomTom Search/EV</strong></td>
+<td>disponibilité des bornes par connecteur</td>
+<td>À la demande, <strong>cache 2 min</strong></td>
+<td>Oui</td>
+<td>Commerciale, freemium</td>
+</tr>
+<tr>
+<td><strong>IRVE consolidé (data.gouv.fr)</strong></td>
+<td>~140 k bornes : position, puissance, opérateur, connecteurs, horaires, tarif</td>
+<td>Jeu de données <strong>mis à jour quotidiennement</strong> ; CSV mis en cache ~24 h</td>
+<td>Non</td>
+<td><strong>Licence Ouverte / Etalab</strong> (libre)</td>
+</tr>
+<tr>
+<td><strong>Open-Meteo</strong></td>
+<td>température, vent (vitesse + direction)</td>
+<td>À la demande (conditions courantes)</td>
+<td>Non</td>
+<td>Gratuit <strong>non commercial</strong> ; commercial = payant</td>
+</tr>
+<tr>
+<td><strong>OpenTopoData (SRTM30m)</strong></td>
+<td>altitude</td>
+<td>À la demande (statique)</td>
+<td>Non</td>
+<td>API publique <strong>rate-limitée</strong> (≈1 req/s, 1000/j) ; auto-hébergement pour le commercial</td>
+</tr>
+<tr>
+<td><strong>Photon (komoot)</strong></td>
+<td>autocomplétion d'adresses</td>
+<td>À la demande</td>
+<td>Non</td>
+<td>Fair-use ; auto-héberger en commercial</td>
+</tr>
+<tr>
+<td><strong>Nominatim (OSM)</strong></td>
+<td>géocodage (fallback)</td>
+<td>À la demande</td>
+<td>Non</td>
+<td>Politique stricte (1 req/s, UA obligatoire) ; auto-héberger/payant en prod</td>
+</tr>
+<tr>
+<td><strong>Google Maps (deeplink)</strong></td>
+<td>remise à la navigation</td>
+<td>À la demande</td>
+<td>Non</td>
+<td>Deeplink gratuit (≠ embarquer Maps)</td>
+</tr>
+<tr>
+<td><strong>Télématique (datalake)</strong></td>
+<td>SoC, GPS, style, IDs</td>
+<td><strong>30 s</strong></td>
+<td>—</td>
+<td>Infrastructure interne</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-abonnements-cles-api-et-couts-reels">5. Abonnements, clés API et coûts réels</h2>
+<p><strong>À prévoir pour un produit commercial (≠ proto) :</strong></p>
+<ul>
+<li><strong>HERE</strong> — clé API. Free tier mensuel puis facturation à la requête au-delà. Vérifier les <strong>droits de cache</strong> des réponses et les quotas. <em>Bottleneck de latence (~5-8 s/requête).</em></li>
+<li><strong>TomTom</strong> — clé API. Free tier puis facturation. Utilisé pour la disponibilité (cache 2 min pour limiter le coût).</li>
+<li><strong>Open-Meteo / Nominatim / Photon / OpenTopoData</strong> — ⚠️ <strong>gratuits uniquement en usage non commercial / fair-use.</strong> Pour un volume flotte : <strong>plan payant ou auto-hébergement</strong> (sinon rate-limit / blocage). À chiffrer comme un vrai poste.</li>
+<li><strong>Mapbox Navigation SDK</strong> (phase native, cf. §11) — free tier <strong>100 MAU + 1 000 trajets/mois</strong> ; au-delà, modèle <em>metered</em> (MAU + trajet) ou <em>unlimited</em> (par MAU). Tarif entreprise au-delà de 5 000 MAU.</li>
+<li><strong>Télématique</strong> — déjà disponible (datalake interne) ; pas d'abonnement tiers.</li>
+</ul>
+<p><strong>Recommandation CTO :</strong> isoler chaque dépendance derrière une interface (déjà le cas pour le routing HERE/TomTom) afin de pouvoir <strong>basculer vers une version auto-hébergée</strong> (Nominatim, OpenTopoData, Open-Meteo) le jour où le volume l'exige.</p>
+<hr />
+<h2 id="6-algorithmes">6. Algorithmes</h2>
+<h3 id="61-routing-consommation-here">6.1 Routing &amp; consommation (HERE)</h3>
+<p>On envoie à HERE la <strong>courbe de consommation</strong> (<code>freeFlowSpeedTable</code> et <code>trafficSpeedTable</code>, paires vitesse→kWh/km), la charge initiale, la charge max et la conso auxiliaire. HERE renvoie des <strong>sections</strong> : polyline encodée (flexpolyline), longueur, <strong>consommation kWh</strong>, durée, et <strong>péages</strong> (EUR). Le trafic temps réel est activé via <code>departureTime = now</code>.</p>
+<h3 id="62-distribution-des-points-le-long-de-la-polyline">6.2 Distribution des points le long de la polyline</h3>
+<p>Pour chaque section, on décode la polyline puis on répartit km / kWh / SoC sur chaque sommet <strong>proportionnellement à la distance haversine</strong> entre points consécutifs :</p>
+<pre><code>frac_i      = (Σ segments jusqu'à i) / (Σ segments de la section)
+km_i        = km_cumulé + section_km  · frac_i
+kwh_i       = kwh_cumulé + section_kwh · frac_i
+soc_i (%)   = max(0, (charge_initiale_kWh − kwh_i) / batterie · 100)
+</code></pre>
+<p>On stocke aussi <code>kwh_consumed_from_start</code> <strong>non bridé</strong> (peut dépasser l'autonomie réelle) pour le planner.</p>
+<h3 id="63-style-de-conduite">6.3 Style de conduite</h3>
+<p><code>consumption_curve</code> multipliée par le facteur de style (0.85 / 1.0 / 1.18). Un style inconnu retombe sur 1.0.</p>
+<h3 id="64-correction-meteo">6.4 Correction météo</h3>
+<p>Échantillonnage de <strong>4 points</strong> le long du trajet, requêtes Open-Meteo <strong>en parallèle</strong> (ThreadPool), puis interpolation linéaire (circulaire pour la direction du vent).</p>
+<ul>
+<li><strong>Facteur température</strong> (réf. 20 °C) :
+  <code>f_T = 1 + max(0, 20 − T)·0.015 + max(0, T − 25)·0.008</code>
+  (chauffage/batterie froide sous 20 °C ; clim au-dessus de 25 °C).</li>
+<li><strong>Facteur vent</strong> (la part aéro croît en v²) :
+  <code>part_aéro = min(0.85, 0.50·(v/100)²)</code> ; <code>v_eff = max(1, v + vent_de_face)</code> ;
+  <code>f_vent = 1 + part_aéro·((v_eff/v)² − 1)</code> (neutre sous 30 km/h).
+  Le <strong>vent de face</strong> est projeté via le cap (bearing) du segment : <code>vent·cos(dir_vent − cap)</code>.</li>
+</ul>
+<h3 id="65-correction-relief-elevation">6.5 Correction relief (élévation)</h3>
+<p>Échantillonnage ≤ <strong>60 points</strong> (limite OpenTopoData), interpolation linéaire de l'altitude sur tous les points. Énergie potentielle :</p>
+<pre><code>E_kWh = masse·g·Δh / 3.6e6   (masse = 1850 kg, g = 9.81)
+montée  : E / rendement_montée   (0.85)
+descente: E · rendement_regen     (0.70, énergie récupérée)
+</code></pre>
+<p>Méta calculées : altitude min/max, dénivelé positif cumulé.</p>
+<p><strong>Recompose finale du SoC</strong> (par segment) :
+<code>kwh_ajusté = kwh_base · f_T · f_vent + E_relief</code> ; SoC recalculé sur la conso cumulée.</p>
+<h3 id="66-filtrage-corridor-bornes-proches-du-trajet">6.6 Filtrage corridor (bornes proches du trajet)</h3>
+<ol>
+<li><strong>Pré-filtre bbox</strong> : <code>pad = corridor_km / 111</code> (≈ 1° lat ≈ 111 km).</li>
+<li><strong>Sous-échantillonnage</strong> de l'itinéraire (≤ 200 points).</li>
+<li><strong>Haversine vectorisé numpy</strong> sur la matrice (n_bornes × n_échantillons) → distance min au trajet par borne (≈ 50× plus rapide qu'une boucle Python). On conserve <code>distance_to_route_km</code>, <code>km_along_route</code>, <code>soc_when_passing_pct</code>, et on garde les bornes à ≤ <code>corridor_km</code> (défaut 5 km).</li>
+</ol>
+<h3 id="67-categories-de-puissance-referentiel-avere-france">6.7 Catégories de puissance (référentiel Avere-France)</h3>
+<p>Normale &lt; 7.4 kW · Accélérée 7.4–22 · Rapide 22–50 · HPC 50–150 · Ultra-rapide ≥ 150. Le planner ne retient par défaut que <strong>Rapide / HPC / Ultra-rapide</strong>.</p>
+<h3 id="68-planner-darrets-greedy-lookback">6.8 Planner d'arrêts — <em>greedy lookback</em></h3>
+<p>On parcourt le profil SoC. Dès que le SoC passerait sous <code>min_soc_pct</code>, on cherche <strong>en arrière</strong> sur une fenêtre (<code>lookback_km</code>, défaut 200 km) la meilleure borne :</p>
+<pre><code>score = power_weight · min(puissance, max_dc)
+      + position_weight · (km_borne / km_critique)
+      − price_weight · prix_kWh        (mode éco uniquement)
+</code></pre>
+<p>On insère l'arrêt, on recharge jusqu'au <strong>SoC cible de sortie</strong>, et on <strong>décale tout le profil restant</strong> de l'énergie ajoutée. Répété jusqu'à arrivée avec marge, ou jusqu'à <code>max_stops</code> (12).</p>
+<p><strong>Puissance de charge effective</strong> (modèle de <em>taper</em>) — une borne rapide ne tient pas sa puissance crête sur toute la plage 10 → cible :</p>
+<pre><code>limité   = min(puissance_borne, max_dc_véhicule)
+ratio    = limité / max_dc
+facteur  = clamp( 0.95 − 0.55·ratio − max(0, (cible − 80)·0.01), ≥ 0.30 )
+kW_effectif = limité · facteur
+temps_charge_min = kWh_ajoutés / kW_effectif · 60
+</code></pre>
+<h3 id="69-modes-rapide-economique">6.9 Modes Rapide / Économique</h3>
+<table>
+<thead>
+<tr>
+<th>Param</th>
+<th>fast</th>
+<th>eco</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SoC de sortie cible</td>
+<td>70 %</td>
+<td>85 %</td>
+</tr>
+<tr>
+<td>SoC mini à l'arrivée</td>
+<td>10 %</td>
+<td>15 %</td>
+</tr>
+<tr>
+<td><code>power_weight</code></td>
+<td>0.6</td>
+<td>0.3</td>
+</tr>
+<tr>
+<td><code>position_weight</code></td>
+<td>100</td>
+<td>80</td>
+</tr>
+<tr>
+<td><code>price_weight</code></td>
+<td>0</td>
+<td>200</td>
+</tr>
+</tbody>
+</table>
+<p>Le mode <strong>éco</strong> fait une <strong>recherche de budget</strong> : il essaie des <code>price_weight</code> décroissants (400→40) et garde la 1ʳᵉ solution faisable dont le temps total ≤ <strong>1.2 × temps du mode rapide</strong>.</p>
+<h3 id="610-tarification-cout">6.10 Tarification / coût</h3>
+<ol>
+<li>Si le champ IRVE <code>tarification</code> contient un €/kWh explicite (regex défensive sur texte libre) → on l'utilise.</li>
+<li>Sinon, <strong>référentiel opérateurs</strong> (<code>OPERATOR_PRICES</code>, ~30 opérateurs, prix ad-hoc carte bleue, réf. mi-2025).</li>
+<li>Sinon, <strong>défaut par palier de puissance</strong> : 0.30 (≤22) / 0.45 (≤50) / 0.55 (≤150) / 0.65 (≤350) / 0.69 €/kWh.
+<code>coût_arrêt = prix_kWh · kWh_ajoutés</code>.</li>
+</ol>
+<h3 id="611-disponibilite-tomtom">6.11 Disponibilité (TomTom)</h3>
+<p>Recherche de la borne par <strong>proximité (≤ 300 m)</strong> + indice de nom, puis appel <code>chargingAvailability</code> ; agrégation par connecteur (available / occupied / out_of_service / unknown). Statut global priorisé : disponible &gt; occupée &gt; HS &gt; inconnue. <strong>Cache 2 min</strong>.</p>
+<h3 id="612-remise-a-la-navigation-proto">6.12 Remise à la navigation (proto)</h3>
+<p>Génération d'un <strong>deeplink Google Maps Directions</strong> (<code>api=1</code>, <code>dir_action=navigate</code>) avec la/les borne(s) en <strong>waypoint</strong>, plus un <strong>QR</strong> (API publique). Sur mobile, ouverture directe de Google Maps en navigation. ⚠️ <em>Handoff unidirectionnel : aucune mise à jour possible après ouverture (cf. §11).</em></p>
+<hr />
+<h2 id="7-architecture-logique-performance">7. Architecture logique &amp; performance</h2>
+<p><strong>Pipeline (par variante de trajet) :</strong></p>
+<pre><code>Phase 1  fetch_route_here  ──┐
+Phase 1  (en parallèle)      ├─ enrich_route (météo // + élévation)
+                             └─ filter_corridor (bornes)
+Phase 2  plan_trip (fast/eco)
+Phase 3  disponibilité (// par arrêt) + coût
+</code></pre>
+<ul>
+<li>Calculs <strong>HERE x2 en parallèle</strong> (avec / sans péage).</li>
+<li>Météo en <strong>ThreadPool</strong>, élévation en <strong>batch</strong>.</li>
+<li>Corridor IRVE <strong>vectorisé numpy</strong>.</li>
+<li>Caches : itinéraire/IRVE (24 h), disponibilité (2 min), géocodage (10 min).</li>
+</ul>
+<p><strong>Performance actuelle :</strong> ~13 s typiques, <strong>dominés par la latence HERE (~5-8 s/requête)</strong> — c'est le principal levier d'optimisation côté backend.</p>
+<hr />
+<h2 id="8-conformite-juridique">8. Conformité &amp; juridique</h2>
+<blockquote>
+<p>⚠️ Section critique pour un produit B2B flotte en France — à valider avec un conseil juridique.</p>
+</blockquote>
+<h3 id="81-rgpd-cnil-geolocalisation-des-conducteurs">8.1 RGPD / CNIL — géolocalisation des conducteurs</h3>
+<p>La télématique (position + style de conduite d'un <strong>salarié</strong>) est une <strong>donnée personnelle</strong>, encadrée par la CNIL :
+- <strong>Base légale</strong> et <strong>information préalable</strong> du conducteur.
+- <strong>Consultation du CSE</strong> (comité social et économique) pour le suivi des véhicules de salariés.
+- <strong>Minimisation &amp; durée de conservation</strong> définies ; désactivation hors temps de travail.
+- <strong>Droits</strong> d'accès/rectification ; <strong>finalité</strong> strictement délimitée (pas de surveillance permanente).
+- Registre des traitements, analyse d'impact (AIPD) probable vu la géoloc.</p>
+<h3 id="82-radars-zones-de-danger-obligation-legale">8.2 Radars → <strong>zones de danger</strong> (obligation légale)</h3>
+<p>En France, <strong>signaler la position exacte d'un radar fixe est interdit</strong> (depuis 2012). Les apps doivent afficher des <strong>« zones de danger » agrégées</strong> (le compromis Coyote/Waze). Conséquence produit : la donnée (open data Sécurité Routière) doit être <strong>transformée en zones</strong>, jamais affichée en points précis.</p>
+<h3 id="83-licences-des-donnees">8.3 Licences des données</h3>
+<ul>
+<li>IRVE : Licence Ouverte / Etalab (OK commercial).</li>
+<li>OSM / Nominatim / Photon : attribution OSM + politique d'usage (auto-héberger en prod).</li>
+<li>HERE / TomTom : licences commerciales, respecter les droits de cache/affichage.</li>
+</ul>
+<hr />
+<h2 id="9-securite">9. Sécurité</h2>
+<ul>
+<li><strong>Secrets</strong> (clés HERE, TomTom, accès datalake) hors du code, en coffre / variables d'environnement chiffrées ; <strong>rotation</strong> régulière.</li>
+<li><strong>Cloisonnement de la donnée conducteur</strong> : la position d'un salarié ne doit être accessible qu'aux rôles légitimes (principe du moindre privilège).</li>
+<li><strong>Transport chiffré</strong> (TLS) de bout en bout, y compris flux télématique.</li>
+<li><strong>Journalisation des accès</strong> aux données de géolocalisation (traçabilité CNIL).</li>
+</ul>
+<hr />
+<h2 id="10-precision-et-limites-du-modele">10. Précision et limites du modèle</h2>
+<ul>
+<li><strong>Véhicule unique</strong> aujourd'hui (Tesla M3 LR hardcodé). Une flotte réelle = N modèles ⇒ besoin d'une <strong>bibliothèque de courbes de conso</strong> (cf. roadmap).</li>
+<li>Hypothèses physiques : masse 1850 kg, rendement montée 0.85, regen 0.70 — approximations.</li>
+<li>Conso auxiliaire constante (<code>aux_kw</code>), même courbe réutilisée pour le trafic ralenti.</li>
+<li>Tarifs de recharge = <strong>estimations</strong> (réf. mi-2025), pas un flux de prix temps réel.</li>
+<li>Disponibilité = best-effort (matching par proximité), latence/qualité TomTom variables.</li>
+<li>Météo échantillonnée sur 4 points, élévation sur ≤ 60 points (compromis latence/précision).</li>
+</ul>
+<hr />
+<h2 id="11-marche-a-suivre-roadmap-technique">11. Marche à suivre (roadmap technique)</h2>
+<h3 id="jalon-0-api-du-cerveau-quelques-jours">Jalon 0 — API du « cerveau » <em>(quelques jours)</em></h3>
+<p>Exposer le pipeline existant (routing / enrichissement / corridor / planner / pricing) derrière une <strong>API HTTP</strong> (FastAPI). Aucune réécriture des algos : c'est un <em>wrapper</em>. Sert à la fois l'app native et tout autre client.</p>
+<h3 id="jalon-1-telematique-live-1-2-jours-donnees-deja-disponibles">Jalon 1 — Télématique live <em>(1-2 jours, données déjà disponibles)</em></h3>
+<p>Connecteur vers le <strong>datalake (SoC, GPS, IDs ; 30 s)</strong>. Le SoC réel remplace toute saisie manuelle. Comptes conducteur <strong>déjà existants</strong> ⇒ pas de chantier auth.</p>
+<h3 id="jalon-2-app-native-navigation-embarquee-2-3-semaines">Jalon 2 — App native + navigation embarquée <em>(~2-3 semaines)</em></h3>
+<p>App <strong>mobile native</strong> (ex. React Native) intégrant le <strong>Mapbox Navigation SDK</strong> (turn-by-turn embarqué, écran 100 % maîtrisé). La carte et l'itinéraire viennent du Jalon 0.</p>
+<blockquote>
+<p><strong>Pourquoi embarqué et pas deeplink :</strong> un deeplink Google Maps est <strong>unidirectionnel</strong> — une fois ouvert, impossible de mettre à jour la route. Le <strong>reroute automatique selon la conso réelle</strong> n'est possible <strong>que</strong> si la navigation tourne dans l'app.</p>
+</blockquote>
+<h3 id="jalon-3-reroute-anticipatif-quelques-jours-une-fois-j1j2-en-place">Jalon 3 — Reroute anticipatif <em>(quelques jours une fois J1+J2 en place)</em></h3>
+<p>Boucle : lecture conso réelle (30 s) → si dérive vs prévision, <strong>recalcul de l'arrêt</strong> et mise à jour <strong>sans interruption</strong> de la navigation embarquée. C'est le différenciateur cœur.</p>
+<h3 id="jalon-4-zones-de-danger">Jalon 4 — Zones de danger</h3>
+<p>Open data Sécurité Routière → <strong>agrégation en zones</strong> (conforme, cf. §8.2) → overlay sur la carte de navigation.</p>
+<h3 id="jalon-5-cur-metier-energie-a-cadrer-separement">Jalon 5 — Cœur métier énergie <em>(à cadrer séparément)</em></h3>
+<ul>
+<li><strong>Réconciliation paiement</strong> borne ↔ carte de recharge ; <strong>€/km</strong> en direct.</li>
+<li><strong>Dashboard flotte</strong> : coût/km par véhicule, CO₂, reporting siège.</li>
+<li><strong>Bibliothèque multi-véhicules</strong> (courbes de conso par modèle, ex. base type EVDB).</li>
+<li><strong>Robustesse navigation</strong> : mode <strong>hors-ligne</strong> / perte réseau (tunnels, zones blanches).</li>
+</ul>
+<p><strong>Estimation consolidée :</strong> app native avec <strong>nav embarquée + reroute télématique live ≈ 3-4 semaines</strong> (et non 2 mois), la télématique et les comptes conducteur étant <strong>déjà disponibles</strong>.</p>
+<hr />
+<h2 id="12-annexes-constantes-formules">12. Annexes — constantes &amp; formules</h2>
+<p><strong>Véhicule de référence (Tesla M3 LR) :</strong> 75 kWh · aux 1.0 kW · DC max 250 kW.
+Courbe conso (km/h → kWh/km) : (0,0.130)(30,0.130)(50,0.140)(80,0.150)(100,0.165)(120,0.190)(130,0.210).</p>
+<p><strong>Constantes physiques :</strong> masse 1850 kg · g 9.81 · rendement montée 0.85 · regen 0.70.
+<strong>Échantillonnage :</strong> météo 4 pts · élévation ≤ 60 pts · corridor ≤ 200 pts route, défaut 5 km.
+<strong>Caches :</strong> IRVE/itinéraire 24 h · disponibilité 2 min · géocodage 10 min.</p>
+<p><strong>Paramètres planner :</strong> lookback 200 km · max 12 arrêts · catégories par défaut Rapide/HPC/Ultra-rapide.</p>
+<p><em>Fin du document.</em></p></body></html>
